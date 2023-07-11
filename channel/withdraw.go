@@ -146,11 +146,11 @@ func (a *Adjudicator) callAssetWithdraw(ctx context.Context, request channel.Adj
 		if err != nil {
 			return nil, errors.WithMessagef(err, "creating transactor for asset %d", asset.assetIndex)
 		}
-
+		log.Printf("Withdraw transaction with nonce %d", trans.Nonce)
 		tx, err := asset.Withdraw(trans, auth, sig)
 		if err != nil {
 			err = cherrors.CheckIsChainNotReachableError(err)
-			return nil, errors.WithMessagef(err, "withdrawing asset %d", asset.assetIndex)
+			return nil, errors.WithMessagef(err, "withdrawing asset %d with transaction nonce %d", asset.assetIndex, trans.Nonce)
 		}
 		log.Debugf("Sent transaction %v", tx.Hash().Hex())
 		return tx, nil

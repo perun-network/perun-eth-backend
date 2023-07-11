@@ -152,7 +152,6 @@ func (c *ContractBackend) NewTransactor(ctx context.Context, gasLimit uint64, ac
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("Nonce: %d", nonce)
 	auth.Nonce = big.NewInt(int64(nonce))
 	return auth, nil
 }
