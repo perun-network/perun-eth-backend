@@ -16,7 +16,6 @@ package channel
 
 import (
 	"context"
-	"fmt"
 	"math/big"
 	"sync"
 
@@ -153,7 +152,7 @@ func (c *ContractBackend) NewTransactor(ctx context.Context, gasLimit uint64, ac
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("Nonce: %d", nonce)
+	log.Printf("Nonce: %d", nonce)
 	auth.Nonce = big.NewInt(int64(nonce))
 	return auth, nil
 }
