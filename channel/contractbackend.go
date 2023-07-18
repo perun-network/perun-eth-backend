@@ -45,6 +45,11 @@ const (
 // create a TxTimedoutError with additional context.
 var errTxTimedOut = errors.New("")
 
+var (
+	GlobalExpectedNonces map[ChainID]map[common.Address]uint64
+	GlobalNonceMtx       map[ChainID]*sync.Mutex
+)
+
 // ContractInterface provides all functions needed by an ethereum backend.
 // Both test.SimulatedBackend and ethclient.Client implement this interface.
 type ContractInterface interface {
@@ -74,12 +79,25 @@ type ContractBackend struct {
 // txFinalityDepth defines in how many consecutive blocks a TX has to be
 // included to be considered final. Must be at least 1.
 func NewContractBackend(cf ContractInterface, chainID ChainID, tr Transactor, txFinalityDepth uint64) ContractBackend {
+	// Check if the global maps are initialized, if not, initialize them.
+	if GlobalExpectedNonces == nil {
+		GlobalExpectedNonces = make(map[ChainID]map[common.Address]uint64)
+	}
+	if GlobalNonceMtx == nil {
+		GlobalNonceMtx = make(map[ChainID]*sync.Mutex)
+	}
+
+	// Check if the specific chainID entry exists in the global maps, if not, create it.
+	if _, exists := GlobalExpectedNonces[chainID]; !exists {
+		GlobalExpectedNonces[chainID] = make(map[common.Address]uint64)
+		GlobalNonceMtx[chainID] = &sync.Mutex{}
+	}
 	return ContractBackend{
 		ContractInterface: cf,
 		tr:                tr,
-		expectedNextNonce: make(map[common.Address]uint64),
+		expectedNextNonce: GlobalExpectedNonces[chainID],
 		prevNonces:        []uint64{},
-		nonceMtx:          &sync.Mutex{},
+		nonceMtx:          GlobalNonceMtx[chainID],
 		txFinalityDepth:   txFinalityDepth,
 		chainID:           chainID,
 	}
@@ -173,10 +191,9 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 	defer c.nonceMtx.Unlock()
 	expectedNextNonce, found := c.expectedNextNonce[sender]
 	if !found {
-		expectedNextNonce = nonce + 1
-		c.expectedNextNonce[sender] = expectedNextNonce
+		c.expectedNextNonce[sender] = 0
 	}
-	log.Printf("Expected next nonce of %s locally %d", sender.String(), c.expectedNextNonce[sender])
+	log.Printf("Expected next nonce of sender %s locally %d", sender.String(), c.expectedNextNonce[sender])
 
 	// Compare nonces and use larger.
 	if nonce < expectedNextNonce {
