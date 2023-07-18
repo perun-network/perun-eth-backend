@@ -65,6 +65,7 @@ type ContractBackend struct {
 	tr                Transactor
 	nonceMtx          *sync.Mutex
 	expectedNextNonce map[common.Address]uint64
+	prevNonces        []uint64
 	txFinalityDepth   uint64
 	chainID           ChainID
 }
@@ -77,6 +78,7 @@ func NewContractBackend(cf ContractInterface, chainID ChainID, tr Transactor, tx
 		ContractInterface: cf,
 		tr:                tr,
 		expectedNextNonce: make(map[common.Address]uint64),
+		prevNonces:        []uint64{},
 		nonceMtx:          &sync.Mutex{},
 		txFinalityDepth:   txFinalityDepth,
 		chainID:           chainID,
@@ -165,7 +167,7 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 		err = cherrors.CheckIsChainNotReachableError(err)
 		return 0, errors.WithMessage(err, "fetching nonce")
 	}
-	log.Printf("Pending nonce from backend %d", nonce)
+	log.Printf("Pending nonce of %s from backend %d", sender.String(), nonce)
 	// Look up expected next nonce locally.
 	c.nonceMtx.Lock()
 	defer c.nonceMtx.Unlock()
@@ -173,7 +175,7 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 	if !found {
 		c.expectedNextNonce[sender] = 0
 	}
-	log.Printf("Expected next nonce locally %d", c.expectedNextNonce[sender])
+	log.Printf("Expected next nonce of %s locally %d", sender.String(), c.expectedNextNonce[sender])
 
 	// Compare nonces and use larger.
 	if nonce < expectedNextNonce {
@@ -182,6 +184,8 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 
 	// Update local expectation.
 	c.expectedNextNonce[sender] = nonce + 1
+	c.prevNonces = append(c.prevNonces, nonce)
+	log.Printf("Previous nonce of %s: %v", sender.String(), c.prevNonces)
 	return nonce, nil
 }
 
