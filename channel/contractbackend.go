@@ -165,7 +165,7 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 		err = cherrors.CheckIsChainNotReachableError(err)
 		return 0, errors.WithMessage(err, "fetching nonce")
 	}
-
+	log.Printf("Pending nonce from backend %d", nonce)
 	// Look up expected next nonce locally.
 	c.nonceMtx.Lock()
 	defer c.nonceMtx.Unlock()
@@ -173,6 +173,7 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 	if !found {
 		c.expectedNextNonce[sender] = 0
 	}
+	log.Printf("Expected next nonce locally %d", c.expectedNextNonce[sender])
 
 	// Compare nonces and use larger.
 	if nonce < expectedNextNonce {
