@@ -170,18 +170,12 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 	log.Printf("Pending nonce of %s from backend %d", sender.String(), nonce)
 	// Look up expected next nonce locally.
 	c.nonceMtx.Lock()
+	defer c.nonceMtx.Unlock()
 	expectedNextNonce, found := c.expectedNextNonce[sender]
-	c.nonceMtx.Unlock()
 	if !found {
-		c.nonceMtx.Lock()
-		expectedNextNonce, found = c.expectedNextNonce[sender]
-		if !found {
-			expectedNextNonce = nonce
-			c.expectedNextNonce[sender] = expectedNextNonce + 1
-		}
-		c.nonceMtx.Unlock()
+		expectedNextNonce = nonce + 1
+		c.expectedNextNonce[sender] = expectedNextNonce
 	}
-
 	log.Printf("Expected next nonce of %s locally %d", sender.String(), c.expectedNextNonce[sender])
 
 	// Compare nonces and use larger.
@@ -190,9 +184,7 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 	}
 
 	// Update local expectation.
-	c.nonceMtx.Lock()
 	c.expectedNextNonce[sender] = nonce + 1
-	c.nonceMtx.Unlock()
 	c.prevNonces = append(c.prevNonces, nonce)
 	log.Printf("Previous nonce of %s: %v", sender.String(), c.prevNonces)
 	return nonce, nil
