@@ -167,7 +167,7 @@ func (a *Adjudicator) callAssetWithdraw(ctx context.Context, request channel.Adj
 			err = cherrors.CheckIsChainNotReachableError(err)
 			return nil, errors.WithMessagef(err, "withdrawing asset %d with transaction nonce %d", asset.assetIndex, trans.Nonce)
 		}
-		log.Debugf("Sent transaction %v", tx.Hash().Hex())
+		log.Printf("Sent transaction %v", tx.Hash().Hex())
 		return tx, nil
 	}()
 	if err != nil {
