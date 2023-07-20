@@ -18,6 +18,7 @@ import (
 	"context"
 	"math/big"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
@@ -190,6 +191,7 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 	if c.nonceMtx[sender] == nil {
 		c.nonceMtx[sender] = &sync.Mutex{}
 	}
+	startLock := time.Now()
 	c.nonceMtx[sender].Lock()
 	defer c.nonceMtx[sender].Unlock()
 	expectedNextNonce, found := c.expectedNextNonce[sender]
@@ -207,6 +209,8 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 	c.expectedNextNonce[sender] = nonce + 1
 	c.prevNonces = append(c.prevNonces, nonce)
 	log.Printf("Previous nonce of %s: %v", sender.String(), c.prevNonces)
+	elapsedLock := time.Since(startLock)
+	log.Printf("Lock time: %s", elapsedLock)
 	return nonce, nil
 }
 
