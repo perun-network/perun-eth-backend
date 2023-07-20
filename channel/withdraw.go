@@ -17,6 +17,7 @@ package channel
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -161,10 +162,13 @@ func (a *Adjudicator) callAssetWithdraw(ctx context.Context, request channel.Adj
 	if err != nil {
 		return err
 	}
+	startWithdraw := time.Now()
 	_, err = a.ConfirmTransaction(ctx, tx, a.txSender)
 	if err != nil && errors.Is(err, errTxTimedOut) {
 		err = client.NewTxTimedoutError(Withdraw.String(), tx.Hash().Hex(), err.Error())
 	}
+	elapsedWithdraw := time.Since(startWithdraw)
+	log.Printf("Wait for withdraw transaction of asset %s in %s", asset, elapsedWithdraw)
 	return errors.WithMessage(err, "mining transaction")
 }
 
