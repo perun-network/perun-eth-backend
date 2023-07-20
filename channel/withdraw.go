@@ -60,6 +60,7 @@ func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.Adjudicat
 	g, ctx := errgroup.WithContext(ctx)
 
 	for _, asset := range filterAssets(req.Tx.Allocation.Assets, a.chainID) {
+		startWithdraw := time.Now()
 		index, ok := assetIdx(req.Tx.Allocation.Assets, asset)
 		if !ok {
 			return errors.New("asset not found in adjudicator request")
@@ -114,6 +115,7 @@ func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.Adjudicat
 				return errors.New("subscription closed")
 			}
 		})
+		log.Printf("Withdraw asset %s in %s", asset, time.Since(startWithdraw))
 	}
 	return g.Wait()
 }
