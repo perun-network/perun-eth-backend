@@ -51,7 +51,7 @@ func (a *Adjudicator) Withdraw(ctx context.Context, req channel.AdjudicatorReq, 
 		return errors.WithMessage(err, "check concluded state")
 	}
 	elapsedCheckConcluded := time.Since(startCheckConcluded)
-	log.Printf("EnsuredConcluded in %s", elapsedCheckConcluded)
+	log.Printf("CheckConcluded in %s", elapsedCheckConcluded)
 
 	return errors.WithMessage(a.ensureWithdrawn(ctx, req), "ensure Withdrawn")
 }
