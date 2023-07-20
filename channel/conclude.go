@@ -17,7 +17,6 @@ package channel
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -68,13 +67,10 @@ func (a *Adjudicator) ensureConcluded(ctx context.Context, req channel.Adjudicat
 	}
 
 	// No conclude event found in the past, send transaction.
-	startConclude := time.Now()
 	err = a.conclude(ctx, req, subStates)
 	if err != nil {
 		return errors.WithMessage(err, "concluding")
 	}
-	elapsedConclude := time.Since(startConclude)
-	log.Printf("Concluded %s in %s", req.Tx.ID, elapsedConclude)
 
 	// Wait for concluded event.
 	sub, events, subErr, err := a.createEventSub(ctx, req.Tx.ID, false)

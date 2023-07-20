@@ -39,13 +39,19 @@ import (
 // Withdraw ensures that a channel has been concluded and the final outcome
 // withdrawn from the asset holders.
 func (a *Adjudicator) Withdraw(ctx context.Context, req channel.AdjudicatorReq, subStates channel.StateMap) error {
+	startEnsuredConcluded := time.Now()
 	if err := a.ensureConcluded(ctx, req, subStates); err != nil {
 		return errors.WithMessage(err, "ensure Concluded")
 	}
+	elapsedEnsuredConcluded := time.Since(startEnsuredConcluded)
+	log.Printf("EnsuredConcluded in %s", elapsedEnsuredConcluded)
 
+	startCheckConcluded := time.Now()
 	if err := a.checkConcludedState(ctx, req, subStates); err != nil {
 		return errors.WithMessage(err, "check concluded state")
 	}
+	elapsedCheckConcluded := time.Since(startCheckConcluded)
+	log.Printf("EnsuredConcluded in %s", elapsedCheckConcluded)
 
 	return errors.WithMessage(a.ensureWithdrawn(ctx, req), "ensure Withdrawn")
 }
