@@ -60,7 +60,6 @@ func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.Adjudicat
 	g, ctx := errgroup.WithContext(ctx)
 
 	for _, asset := range filterAssets(req.Tx.Allocation.Assets, a.chainID) {
-		startWithdraw := time.Now()
 		index, ok := assetIdx(req.Tx.Allocation.Assets, asset)
 		if !ok {
 			return errors.New("asset not found in adjudicator request")
@@ -72,6 +71,7 @@ func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.Adjudicat
 		}
 		asset := asset // Capture asset locally for usage in closure.
 		g.Go(func() error {
+			startWithdraw := time.Now()
 			// Create subscription
 			contract := bindAssetHolder(a.ContractBackend, asset, index)
 			fundingID := FundingIDs(req.Params.ID(), req.Params.Parts[req.Idx])[0]
@@ -105,17 +105,20 @@ func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.Adjudicat
 
 			select {
 			case <-events:
+				log.Printf("Withdraw asset %s in %s", asset, time.Since(startWithdraw))
 				return nil
 			case <-ctx.Done():
+				log.Printf("Withdraw asset %s in %s", asset, time.Since(startWithdraw))
 				return errors.Wrap(ctx.Err(), "context cancelled")
 			case err = <-subErr:
 				if err != nil {
 					return errors.WithMessage(err, "subscription error")
 				}
+				log.Printf("Withdraw asset %s in %s", asset, time.Since(startWithdraw))
 				return errors.New("subscription closed")
 			}
 		})
-		log.Printf("Withdraw asset %s in %s", asset, time.Since(startWithdraw))
+
 	}
 	return g.Wait()
 }
