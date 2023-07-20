@@ -47,7 +47,7 @@ var errTxTimedOut = errors.New("")
 
 var (
 	GlobalExpectedNonces map[ChainID]map[common.Address]uint64
-	GlobalNonceMtx       map[ChainID]*sync.Mutex
+	GlobalNonceMtx       map[ChainID]map[common.Address]*sync.Mutex
 )
 
 // ContractInterface provides all functions needed by an ethereum backend.
@@ -68,7 +68,7 @@ type Transactor interface {
 type ContractBackend struct {
 	ContractInterface
 	tr                Transactor
-	nonceMtx          *sync.Mutex
+	nonceMtx          map[common.Address]*sync.Mutex
 	expectedNextNonce map[common.Address]uint64
 	prevNonces        []uint64
 	txFinalityDepth   uint64
@@ -84,13 +84,13 @@ func NewContractBackend(cf ContractInterface, chainID ChainID, tr Transactor, tx
 		GlobalExpectedNonces = make(map[ChainID]map[common.Address]uint64)
 	}
 	if GlobalNonceMtx == nil {
-		GlobalNonceMtx = make(map[ChainID]*sync.Mutex)
+		GlobalNonceMtx = make(map[ChainID]map[common.Address]*sync.Mutex)
 	}
 
 	// Check if the specific chainID entry exists in the global maps, if not, create it.
 	if _, exists := GlobalExpectedNonces[chainID]; !exists {
 		GlobalExpectedNonces[chainID] = make(map[common.Address]uint64)
-		GlobalNonceMtx[chainID] = &sync.Mutex{}
+		GlobalNonceMtx[chainID] = make(map[common.Address]*sync.Mutex)
 	}
 	return ContractBackend{
 		ContractInterface: cf,
@@ -187,8 +187,11 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 	}
 	log.Printf("Pending nonce of %s from backend %d", sender.String(), nonce)
 	// Look up expected next nonce locally.
-	c.nonceMtx.Lock()
-	defer c.nonceMtx.Unlock()
+	if c.nonceMtx[sender] == nil {
+		c.nonceMtx[sender] = &sync.Mutex{}
+	}
+	c.nonceMtx[sender].Lock()
+	defer c.nonceMtx[sender].Unlock()
 	expectedNextNonce, found := c.expectedNextNonce[sender]
 	if !found {
 		c.expectedNextNonce[sender] = 0
