@@ -17,6 +17,7 @@ package channel
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -42,6 +43,7 @@ const (
 // - it searches for a past concluded event by calling `isConcluded`
 //   - if found, channel is already concluded and success is returned
 //   - if none found, conclude/concludeFinal is called on the adjudicator
+//
 // - it waits for a Concluded event from the blockchain.
 func (a *Adjudicator) ensureConcluded(ctx context.Context, req channel.AdjudicatorReq, subStates channel.StateMap) error {
 	// Check whether it is already concluded.
@@ -66,10 +68,13 @@ func (a *Adjudicator) ensureConcluded(ctx context.Context, req channel.Adjudicat
 	}
 
 	// No conclude event found in the past, send transaction.
+	startConclude := time.Now()
 	err = a.conclude(ctx, req, subStates)
 	if err != nil {
 		return errors.WithMessage(err, "concluding")
 	}
+	elapsedConclude := time.Since(startConclude)
+	log.Printf("Concluded %s in %s", req.Tx.ID, elapsedConclude)
 
 	// Wait for concluded event.
 	sub, events, subErr, err := a.createEventSub(ctx, req.Tx.ID, false)
