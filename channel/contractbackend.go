@@ -247,7 +247,7 @@ func (c *ContractBackend) confirmNTimes(ctx context.Context, tx *types.Transacti
 	if err != nil {
 		return nil, errors.WithMessage(err, "waiting for TX to be mined")
 	}
-	log.Printf("WaitMined of tx %s in %s", tx.Hash().Hex(), time.Since(startWaitMined))
+	log.Printf("WaitMined of tx %s in %s; Start: %s ; End: %s", tx.Hash().Hex(), time.Since(startWaitMined), startWaitMined, time.Now())
 
 	// Set up header sub for future blocks.
 	heads := make(chan *types.Header, contractBackendHeadBuffSize)
