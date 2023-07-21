@@ -71,7 +71,6 @@ type ContractBackend struct {
 	tr                Transactor
 	nonceMtx          map[common.Address]*sync.Mutex
 	expectedNextNonce map[common.Address]uint64
-	prevNonces        []uint64
 	txFinalityDepth   uint64
 	chainID           ChainID
 }
@@ -97,7 +96,6 @@ func NewContractBackend(cf ContractInterface, chainID ChainID, tr Transactor, tx
 		ContractInterface: cf,
 		tr:                tr,
 		expectedNextNonce: GlobalExpectedNonces[chainID],
-		prevNonces:        []uint64{},
 		nonceMtx:          GlobalNonceMtx[chainID],
 		txFinalityDepth:   txFinalityDepth,
 		chainID:           chainID,
@@ -186,19 +184,16 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 		err = cherrors.CheckIsChainNotReachableError(err)
 		return 0, errors.WithMessage(err, "fetching nonce")
 	}
-	log.Printf("Pending nonce of %s from backend %d", sender.String(), nonce)
 	// Look up expected next nonce locally.
 	if c.nonceMtx[sender] == nil {
 		c.nonceMtx[sender] = &sync.Mutex{}
 	}
-	startLock := time.Now()
 	c.nonceMtx[sender].Lock()
 	defer c.nonceMtx[sender].Unlock()
 	expectedNextNonce, found := c.expectedNextNonce[sender]
 	if !found {
 		c.expectedNextNonce[sender] = 0
 	}
-	log.Printf("Expected next nonce of sender %s locally %d", sender.String(), c.expectedNextNonce[sender])
 
 	// Compare nonces and use larger.
 	if nonce < expectedNextNonce {
@@ -207,10 +202,6 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 
 	// Update local expectation.
 	c.expectedNextNonce[sender] = nonce + 1
-	c.prevNonces = append(c.prevNonces, nonce)
-	log.Printf("Previous nonce of %s: %v", sender.String(), c.prevNonces)
-	elapsedLock := time.Since(startLock)
-	log.Printf("Lock time: %s", elapsedLock)
 	return nonce, nil
 }
 
@@ -250,11 +241,13 @@ func (c *ContractBackend) confirmNTimes(ctx context.Context, tx *types.Transacti
 	if finalityDepth < 1 {
 		return nil, errors.New("finalityDepth was less than 1")
 	}
+	startWaitMined := time.Now()
 	// Wait to be included at least once.
 	head, err := c.waitMined(ctx, tx)
 	if err != nil {
 		return nil, errors.WithMessage(err, "waiting for TX to be mined")
 	}
+	log.Printf("WaitMined of tx %s in %s", tx.Hash().Hex(), time.Since(startWaitMined))
 
 	// Set up header sub for future blocks.
 	heads := make(chan *types.Header, contractBackendHeadBuffSize)
@@ -266,6 +259,7 @@ func (c *ContractBackend) confirmNTimes(ctx context.Context, tx *types.Transacti
 	}
 	defer hsub.Unsubscribe()
 
+	startPollReceipt := time.Now()
 	for {
 		select {
 		case head := <-heads:
@@ -277,17 +271,21 @@ func (c *ContractBackend) confirmNTimes(ctx context.Context, tx *types.Transacti
 				break
 			}
 			if receipt != nil && isFinal(receipt, head, finalityDepth) {
+				log.Printf("PollReceipt for Tx %s in %s", tx.Hash().Hex(), time.Since(startPollReceipt))
 				return receipt, nil
 			}
 			// TX is either not included in the canonical chain anymore
 			// or not yet final; wait for next head.
 		case err := <-hsub.Err():
 			err = cherrors.CheckIsChainNotReachableError(err)
+			log.Printf("PollReceipt for Tx %s in %s", tx.Hash().Hex(), time.Since(startPollReceipt))
 			return nil, errors.WithMessage(err, "header subscription")
 		case <-ctx.Done():
+			log.Printf("PollReceipt for Tx %s in %s", tx.Hash().Hex(), time.Since(startPollReceipt))
 			return nil, ctx.Err()
 		}
 	}
+
 }
 
 // waitMined waits for a TX to be mined and returns the latest head.

@@ -166,7 +166,7 @@ func (f *Funder) Fund(ctx context.Context, request channel.FundingReq) error {
 			}
 			f.log.Debugf("Mined TX: %v", tx.Hash().Hex())
 			elapsedFund := time.Since(startFund)
-			log.Printf("Waiting for asset %s to be funded by %s in %s", asset, tx, elapsedFund)
+			log.Printf("Waiting for asset %s to be funded tx %s in %s", asset, tx.Hash().Hex(), elapsedFund)
 		}
 	}
 

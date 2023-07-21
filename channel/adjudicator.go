@@ -157,7 +157,6 @@ func (a *Adjudicator) call(ctx context.Context, req channel.AdjudicatorReq, fn a
 		if err != nil {
 			return nil, errors.WithMessage(err, "creating transactor")
 		}
-		log.Printf("Adjudicator transaction with nonce %d", trans.Nonce)
 		tx, err := fn(trans, ethParams, ethState, req.Tx.Sigs)
 		if err != nil {
 			err = cherrors.CheckIsChainNotReachableError(err)
