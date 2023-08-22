@@ -78,14 +78,7 @@ type ContractBackend struct {
 // NewContractBackend creates a new ContractBackend with the given parameters.
 // txFinalityDepth defines in how many consecutive blocks a TX has to be
 // included to be considered final. Must be at least 1.
-func NewContractBackend(cf ContractInterface, chainID ChainID, tr Transactor, txFinalityDepth uint64) ContractBackend {
-	// Check if the global maps are initialized, if not, initialize them.
-	if GlobalExpectedNonces == nil {
-		GlobalExpectedNonces = make(map[ChainID]map[common.Address]uint64)
-	}
-	if GlobalNonceMtx == nil {
-		GlobalNonceMtx = make(map[ChainID]map[common.Address]*sync.Mutex)
-	}
+func NewContractBackend(cf ContractInterface, chainID ChainID, tr Transactor, txFinalityDepth uint64, GlobalExpectedNonces map[ChainID]map[common.Address]uint64, GlobalNonceMtx map[ChainID]map[common.Address]*sync.Mutex) ContractBackend {
 
 	// Check if the specific chainID entry exists in the global maps, if not, create it.
 	if _, exists := GlobalExpectedNonces[chainID]; !exists {
