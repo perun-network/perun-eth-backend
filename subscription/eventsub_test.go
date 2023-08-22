@@ -17,6 +17,7 @@ package subscription_test
 import (
 	"context"
 	"math/big"
+	"sync"
 	"testing"
 	"time"
 
@@ -65,6 +66,8 @@ func TestEventSub(t *testing.T) {
 		ethchannel.MakeChainID(sb.ChainID()),
 		keystore.NewTransactor(*ksWallet, sb.Signer),
 		txFinalityDepth,
+		make(map[ethchannel.ChainID]map[common.Address]uint64),
+		make(map[ethchannel.ChainID]map[common.Address]*sync.Mutex),
 	)
 
 	// Setup Perun Token.
@@ -154,6 +157,8 @@ func TestEventSub_Filter(t *testing.T) {
 		ethchannel.MakeChainID(sb.ChainID()),
 		keystore.NewTransactor(*ksWallet, sb.Signer),
 		txFinalityDepth,
+		make(map[ethchannel.ChainID]map[common.Address]uint64),
+		make(map[ethchannel.ChainID]map[common.Address]*sync.Mutex),
 	)
 
 	// Setup ETH AssetHolder.

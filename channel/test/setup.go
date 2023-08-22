@@ -17,6 +17,7 @@ package test
 import (
 	"context"
 	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -80,6 +81,8 @@ func NewSimSetup(t *testing.T, rng *rand.Rand, txFinalityDepth uint64, blockInte
 		ethchannel.MakeChainID(simBackend.ChainID()),
 		keystore.NewTransactor(*ksWallet, signer),
 		txFinalityDepth,
+		make(map[ethchannel.ChainID]map[common.Address]uint64),
+		make(map[ethchannel.ChainID]map[common.Address]*sync.Mutex),
 	)
 
 	return &SimSetup{
@@ -125,6 +128,8 @@ func NewSetup(t *testing.T, rng *rand.Rand, n int, blockInterval time.Duration, 
 			ethchannel.MakeChainID(s.SimBackend.ChainID()),
 			keystore.NewTransactor(*ksWallet, s.SimBackend.Signer),
 			txFinalityDepth,
+			make(map[ethchannel.ChainID]map[common.Address]uint64),
+			make(map[ethchannel.ChainID]map[common.Address]*sync.Mutex),
 		)
 		s.Funders[i] = ethchannel.NewFunder(cb)
 		require.True(t, s.Funders[i].RegisterAsset(*s.Asset, ethchannel.NewETHDepositor(), s.Accs[i].Account))
