@@ -63,7 +63,9 @@ func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Tra
 	if err != nil {
 		return nil, errors.WithMessagef(err, "creating transactor for asset: %x", req.Asset)
 	}
-	tx1, err := token.IncreaseAllowance(opts, req.Asset.EthAddress(), req.Balance)
+	// tx0, err := token.IncreaseAllowance(opts, req.Asset.EthAddress(), req.Balance)
+	tx1, err := token.Approve(opts, req.Asset.EthAddress(), req.Balance)
+
 	if err != nil {
 		err = cherrors.CheckIsChainNotReachableError(err)
 		return nil, errors.WithMessagef(err, "increasing allowance for asset: %x", req.Asset)
