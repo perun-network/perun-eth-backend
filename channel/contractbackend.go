@@ -285,7 +285,6 @@ func (c *ContractBackend) confirmNTimes(ctx context.Context, tx *types.Transacti
 			return nil, ctx.Err()
 		}
 	}
-
 }
 
 // waitMined waits for a TX to be mined and returns the latest head.

@@ -61,6 +61,8 @@ func NewERC20Depositor(token common.Address) *ERC20Depositor {
 
 // Deposit deposits ERC20 tokens into the ERC20 AssetHolder specified at the
 // request's asset address.
+//
+//eslint:funlen
 func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Transactions, error) {
 	lockKey := lockKey(req.Account.Address, req.Asset.EthAddress())
 	// Lock the mutex associated with this key.
@@ -90,7 +92,6 @@ func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Tra
 	lock.Lock()
 	// Get Allowance.
 	allowance, err := token.Allowance(&callOpts, req.Account.Address, req.Asset.EthAddress())
-
 	if err != nil {
 		return nil, errors.WithMessagef(err, "could not get Allowance for asset: %x", req.Asset)
 	}
@@ -114,7 +115,6 @@ func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Tra
 	}
 	// tx0, err := token.IncreaseAllowance(opts, req.Asset.EthAddress(), req.Balance)
 	tx1, err := token.Approve(opts, req.Asset.EthAddress(), result)
-
 	if err != nil {
 		err = cherrors.CheckIsChainNotReachableError(err)
 		return nil, errors.WithMessagef(err, "increasing allowance for asset: %x", req.Asset)
