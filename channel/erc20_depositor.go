@@ -45,11 +45,11 @@ const ERC20DepositorTXGasLimit = 100000
 // Return value of ERC20Depositor.NumTx.
 const erc20DepositorNumTx = 2
 
-// keep track ob the increse allowance and deposit processes
+// keep track ob the increse allowance and deposit processes.
 var mu sync.Mutex
 var locks = make(map[string]*sync.Mutex)
 
-// create key from account address and asset to only lock the process when the hub is deposits the same asset at the same time
+// create key from account address and asset to only lock the process when the hub is deposits the same asset at the same time.
 func lockKey(account common.Address, asset common.Address) string {
 	return fmt.Sprintf("%s-%s", account.Hex(), asset.Hex())
 }
@@ -65,8 +65,10 @@ func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Tra
 	lockKey := lockKey(req.Account.Address, req.Asset.EthAddress())
 	// Lock the mutex associated with this key.
 	mu.Lock()
-	if _, exists := locks[lockKey]; !exists {
-		locks[lockKey] = &sync.Mutex{}
+	lock, exists := locks[lockKey]
+	if !exists {
+		lock = &sync.Mutex{}
+		locks[lockKey] = lock
 	}
 	mu.Unlock()
 
@@ -80,14 +82,13 @@ func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Tra
 	if err != nil {
 		return nil, errors.Wrapf(err, "binding ERC20 contract at: %x", d.Token)
 	}
-	//get Allowance
 	callOpts := bind.CallOpts{
 		Pending: false,
 		Context: ctx,
 	}
 	// Lock the specific mutex for this combination.
-	locks[lockKey].Lock()
-
+	lock.Lock()
+	// Get Allowance.
 	allowance, err := token.Allowance(&callOpts, req.Account.Address, req.Asset.EthAddress())
 
 	if err != nil {
@@ -112,7 +113,6 @@ func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Tra
 		return nil, errors.WithMessagef(err, "Cannot listen for event")
 	}
 	// tx0, err := token.IncreaseAllowance(opts, req.Asset.EthAddress(), req.Balance)
-	fmt.Println("Approve: ", result)
 	tx1, err := token.Approve(opts, req.Asset.EthAddress(), result)
 
 	if err != nil {
@@ -135,7 +135,7 @@ func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Tra
 
 	// Wait for the Approval event to be received
 	approvalReceived := <-eventReceived
-	defer locks[lockKey].Unlock()
+	defer lock.Unlock()
 	if approvalReceived {
 		_, err1 := token.Allowance(&callOpts, req.Account.Address, req.Asset.EthAddress())
 
