@@ -56,7 +56,7 @@ func (a *Adjudicator) Withdraw(ctx context.Context, req channel.AdjudicatorReq, 
 	return errors.WithMessage(a.ensureWithdrawn(ctx, req), "ensure Withdrawn")
 }
 
-//eslint:funlen
+//nolint:funlen
 func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.AdjudicatorReq) error {
 	g, ctx := errgroup.WithContext(ctx)
 

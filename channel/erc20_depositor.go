@@ -62,7 +62,7 @@ func NewERC20Depositor(token common.Address) *ERC20Depositor {
 // Deposit deposits ERC20 tokens into the ERC20 AssetHolder specified at the
 // request's asset address.
 //
-//eslint:funlen
+//nolint:funlen
 func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Transactions, error) {
 	lockKey := lockKey(req.Account.Address, req.Asset.EthAddress())
 	// Lock the mutex associated with this key.
