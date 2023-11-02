@@ -46,6 +46,7 @@ const (
 // create a TxTimedoutError with additional context.
 var errTxTimedOut = errors.New("")
 
+// GlobalExpected Nonce is a map of each expected next nonce of all clients.
 var (
 	GlobalExpectedNonces map[ChainID]map[common.Address]uint64
 	GlobalNonceMtx       map[ChainID]map[common.Address]*sync.Mutex
