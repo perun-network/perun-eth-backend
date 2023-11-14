@@ -49,7 +49,7 @@ const erc20DepositorNumTx = 2
 var mu sync.Mutex
 var locks = make(map[string]*sync.Mutex)
 
-// Type to create DepositResult instance
+// Type to create DepositResult instance.
 type DepositResult struct {
 	Transactions types.Transactions
 	Error        error
@@ -88,6 +88,7 @@ func NewERC20Depositor(token common.Address) *ERC20Depositor {
 	return &ERC20Depositor{Token: token}
 }
 
+// nolint:funlen
 func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Transactions, error) {
 	lockKey := lockKey(req.Account.Address, req.Asset.EthAddress())
 	lock := handleLock(lockKey)
@@ -170,28 +171,28 @@ func (d *ERC20Depositor) DepositOnly(ctx context.Context, req DepositReq) (*type
 	lock := handleLock(lockKey)
 
 	var result *types.Transaction
-	var error error
+	var resError error
 
 	lockAndUnlock(lock, func() {
 		// Bind a `AssetHolderERC20` instance.
 		assetholder, err := assetholdererc20.NewAssetholdererc20(req.Asset.EthAddress(), req.CB)
 		if err != nil {
-			error = errors.Wrapf(err, "binding AssetHolderERC20 contract at: %x", req.Asset)
+			resError = errors.Wrapf(err, "binding AssetHolderERC20 contract at: %x", req.Asset)
 			result = nil
 		}
 		// Deposit.
 		opts, err := req.CB.NewTransactor(ctx, ERC20DepositorTXGasLimit, req.Account)
 		if err != nil {
-			error = errors.WithMessagef(err, "creating transactor for asset: %x", req.Asset)
+			resError = errors.WithMessagef(err, "creating transactor for asset: %x", req.Asset)
 			result = nil
 		}
 
 		tx2, err := assetholder.Deposit(opts, req.FundingID, req.Balance)
 		err = cherrors.CheckIsChainNotReachableError(err)
 		result = tx2
-		error = errors.WithMessage(err, "AssetHolderERC20 depositing")
+		resError = errors.WithMessage(err, "AssetHolderERC20 depositing")
 	})
-	return result, error
+	return result, resError
 }
 
 // NumTX returns 2 since it does IncreaseAllowance and Deposit.
