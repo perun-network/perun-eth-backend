@@ -52,6 +52,8 @@ var (
 	GlobalNonceMtx       map[ChainID]map[common.Address]*sync.Mutex
 )
 
+var GlobalMutex = &sync.Mutex{}
+
 // ContractInterface provides all functions needed by an ethereum backend.
 // Both test.SimulatedBackend and ethclient.Client implement this interface.
 type ContractInterface interface {
@@ -185,12 +187,7 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 		err = cherrors.CheckIsChainNotReachableError(err)
 		return 0, errors.WithMessage(err, "fetching nonce")
 	}
-	// Look up expected next nonce locally.
-	if c.nonceMtx[sender] == nil {
-		c.nonceMtx[sender] = &sync.Mutex{}
-	}
-	c.nonceMtx[sender].Lock()
-	defer c.nonceMtx[sender].Unlock()
+	GlobalMutex.Lock()
 	expectedNextNonce, found := c.expectedNextNonce[sender]
 	if !found {
 		c.expectedNextNonce[sender] = 0
@@ -203,6 +200,7 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 
 	// Update local expectation.
 	c.expectedNextNonce[sender] = nonce + 1
+	GlobalMutex.Unlock()
 	return nonce, nil
 }
 
