@@ -161,7 +161,6 @@ func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Tra
 		depResult.Error = errors.WithMessage(err, "AssetHolderERC20 depositing")
 	}
 	return depResult.Transactions, depResult.Error
-
 }
 
 // Deposit deposits ERC20 tokens into the ERC20 AssetHolder specified at the
