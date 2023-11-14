@@ -49,7 +49,7 @@ const erc20DepositorNumTx = 2
 var mu sync.Mutex
 var locks = make(map[string]*sync.Mutex)
 
-// Type to create DepositResult instance.
+// DepositResult is created to keep track of the returned values.
 type DepositResult struct {
 	Transactions types.Transactions
 	Error        error
@@ -88,6 +88,7 @@ func NewERC20Depositor(token common.Address) *ERC20Depositor {
 	return &ERC20Depositor{Token: token}
 }
 
+// Deposit approves the value to be swapped and calls DepositOnly.
 // nolint:funlen
 func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Transactions, error) {
 	lockKey := lockKey(req.Account.Address, req.Asset.EthAddress())
@@ -163,7 +164,7 @@ func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Tra
 	return depResult.Transactions, depResult.Error
 }
 
-// Deposit deposits ERC20 tokens into the ERC20 AssetHolder specified at the
+// DepositOnly deposits ERC20 tokens into the ERC20 AssetHolder specified at the
 // request's asset address.
 func (d *ERC20Depositor) DepositOnly(ctx context.Context, req DepositReq) (*types.Transaction, error) {
 	lockKey := lockKey(req.Account.Address, req.Asset.EthAddress())
