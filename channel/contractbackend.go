@@ -52,6 +52,7 @@ var (
 	GlobalNonceMtx       map[ChainID]map[common.Address]*sync.Mutex
 )
 
+// GlobalMutex controls the reads and writes on the nonceMtx and ecpectedNextNonce of the ContractBackend.
 var GlobalMutex = &sync.Mutex{}
 
 // ContractInterface provides all functions needed by an ethereum backend.
