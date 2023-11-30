@@ -45,7 +45,7 @@ const ERC20DepositorTXGasLimit = 100000
 // Return value of ERC20Depositor.NumTx.
 const erc20DepositorNumTx = 2
 
-// keep track ob the increse allowance and deposit processes.
+// Keep track of the increase allowance and deposit processes.
 var mu sync.Mutex
 var locks = make(map[string]*sync.Mutex)
 
@@ -55,7 +55,7 @@ type DepositResult struct {
 	Error        error
 }
 
-// create key from account address and asset to only lock the process when the hub is deposits the same asset at the same time.
+// Create key from account address and asset to only lock the process when hub deposits the same asset at the same time.
 func lockKey(account common.Address, asset common.Address) string {
 	return fmt.Sprintf("%s-%s", account.Hex(), asset.Hex())
 }
@@ -134,7 +134,6 @@ func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Tra
 			depResult.Transactions = nil
 			depResult.Error = errors.WithMessagef(err, "Cannot listen for event")
 		}
-		// tx0, err := token.IncreaseAllowance(opts, req.Asset.EthAddress(), req.Balance)
 		tx1, err1 = token.Approve(opts, req.Asset.EthAddress(), result)
 		if err1 != nil {
 			err = cherrors.CheckIsChainNotReachableError(err)
@@ -145,12 +144,9 @@ func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Tra
 		go func() {
 			select {
 			case event := <-eventSink:
-				// Handle the event
 				log.Printf("Received Approval event: Owner: %s, Spender: %s, Value: %s\n", event.Owner.Hex(), event.Spender.Hex(), event.Value.String())
-				// Set the flag to true to indicate event received
 				eventReceived <- true
 			case err := <-subscription.Err():
-				// Handle subscription error
 				log.Println("Subscription error:", err)
 			}
 		}()
@@ -165,7 +161,7 @@ func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Tra
 }
 
 // DepositOnly deposits ERC20 tokens into the ERC20 AssetHolder specified at the
-// request's asset address.
+// requests asset address.
 func (d *ERC20Depositor) DepositOnly(ctx context.Context, req DepositReq) (*types.Transaction, error) {
 	lockKey := lockKey(req.Account.Address, req.Asset.EthAddress())
 	lock := handleLock(lockKey)
