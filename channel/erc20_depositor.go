@@ -163,32 +163,19 @@ func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Tra
 // DepositOnly deposits ERC20 tokens into the ERC20 AssetHolder specified at the
 // requests asset address.
 func (d *ERC20Depositor) DepositOnly(ctx context.Context, req DepositReq) (*types.Transaction, error) {
-	lockKey := lockKey(req.Account.Address, req.Asset.EthAddress())
-	lock := handleLock(lockKey)
+	// Bind a `AssetHolderERC20` instance.
+	assetholder, err := assetholdererc20.NewAssetholdererc20(req.Asset.EthAddress(), req.CB)
+	if err != nil {
+		return nil, errors.Wrapf(err, "binding AssetHolderERC20 contract at: %x", req.Asset)
+	}
+	// Deposit.
+	opts, err := req.CB.NewTransactor(ctx, ERC20DepositorTXGasLimit, req.Account)
+	if err != nil {
+		return nil, errors.WithMessagef(err, "creating transactor for asset: %x", req.Asset)
+	}
 
-	var result *types.Transaction
-	var resError error
-
-	lockAndUnlock(lock, func() {
-		// Bind a `AssetHolderERC20` instance.
-		assetholder, err := assetholdererc20.NewAssetholdererc20(req.Asset.EthAddress(), req.CB)
-		if err != nil {
-			resError = errors.Wrapf(err, "binding AssetHolderERC20 contract at: %x", req.Asset)
-			result = nil
-		}
-		// Deposit.
-		opts, err := req.CB.NewTransactor(ctx, ERC20DepositorTXGasLimit, req.Account)
-		if err != nil {
-			resError = errors.WithMessagef(err, "creating transactor for asset: %x", req.Asset)
-			result = nil
-		}
-
-		tx2, err := assetholder.Deposit(opts, req.FundingID, req.Balance)
-		err = cherrors.CheckIsChainNotReachableError(err)
-		result = tx2
-		resError = errors.WithMessage(err, "AssetHolderERC20 depositing")
-	})
-	return result, resError
+	tx2, err := assetholder.Deposit(opts, req.FundingID, req.Balance)
+	return tx2, err
 }
 
 // NumTX returns 2 since it does IncreaseAllowance and Deposit.

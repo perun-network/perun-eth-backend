@@ -46,14 +46,14 @@ const (
 // create a TxTimedoutError with additional context.
 var errTxTimedOut = errors.New("")
 
-// GlobalExpected Nonce is a map of each expected next nonce of all clients.
+// SharedExpected Nonce is a map of each expected next nonce of all clients.
 var (
-	GlobalExpectedNonces map[ChainID]map[common.Address]uint64
-	GlobalNonceMtx       map[ChainID]map[common.Address]*sync.Mutex
+	SharedExpectedNonces map[ChainID]map[common.Address]uint64
+	SharedNonceMtx       map[ChainID]map[common.Address]*sync.Mutex
 )
 
-// GlobalMutex controls the reads and writes on the nonceMtx and ecpectedNextNonce of the ContractBackend.
-var GlobalMutex = &sync.Mutex{}
+// SharedMutex controls the reads and writes on the nonceMtx and ecpectedNextNonce of the ContractBackend.
+var SharedMutex = &sync.Mutex{}
 
 // ContractInterface provides all functions needed by an ethereum backend.
 // Both test.SimulatedBackend and ethclient.Client implement this interface.
@@ -83,24 +83,24 @@ type ContractBackend struct {
 // txFinalityDepth defines in how many consecutive blocks a TX has to be
 // included to be considered final. Must be at least 1.
 func NewContractBackend(cf ContractInterface, chainID ChainID, tr Transactor, txFinalityDepth uint64) ContractBackend {
-	// Check if the global maps are initialized, if not, initialize them.
-	if GlobalExpectedNonces == nil {
-		GlobalExpectedNonces = make(map[ChainID]map[common.Address]uint64)
+	// Check if the shared maps are initialized, if not, initialize them.
+	if SharedExpectedNonces == nil {
+		SharedExpectedNonces = make(map[ChainID]map[common.Address]uint64)
 	}
-	if GlobalNonceMtx == nil {
-		GlobalNonceMtx = make(map[ChainID]map[common.Address]*sync.Mutex)
+	if SharedNonceMtx == nil {
+		SharedNonceMtx = make(map[ChainID]map[common.Address]*sync.Mutex)
 	}
 
-	// Check if the specific chainID entry exists in the global maps, if not, create it.
-	if _, exists := GlobalExpectedNonces[chainID]; !exists {
-		GlobalExpectedNonces[chainID] = make(map[common.Address]uint64)
-		GlobalNonceMtx[chainID] = make(map[common.Address]*sync.Mutex)
+	// Check if the specific chainID entry exists in the shared maps, if not, create it.
+	if _, exists := SharedExpectedNonces[chainID]; !exists {
+		SharedExpectedNonces[chainID] = make(map[common.Address]uint64)
+		SharedNonceMtx[chainID] = make(map[common.Address]*sync.Mutex)
 	}
 	return ContractBackend{
 		ContractInterface: cf,
 		tr:                tr,
-		expectedNextNonce: GlobalExpectedNonces[chainID],
-		nonceMtx:          GlobalNonceMtx[chainID],
+		expectedNextNonce: SharedExpectedNonces[chainID],
+		nonceMtx:          SharedNonceMtx[chainID],
 		txFinalityDepth:   txFinalityDepth,
 		chainID:           chainID,
 	}
@@ -188,7 +188,7 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 		err = cherrors.CheckIsChainNotReachableError(err)
 		return 0, errors.WithMessage(err, "fetching nonce")
 	}
-	GlobalMutex.Lock()
+	SharedMutex.Lock()
 	expectedNextNonce, found := c.expectedNextNonce[sender]
 	if !found {
 		c.expectedNextNonce[sender] = 0
@@ -201,7 +201,7 @@ func (c *ContractBackend) nonce(ctx context.Context, sender common.Address) (uin
 
 	// Update local expectation.
 	c.expectedNextNonce[sender] = nonce + 1
-	GlobalMutex.Unlock()
+	SharedMutex.Unlock()
 	return nonce, nil
 }
 
