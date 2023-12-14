@@ -17,6 +17,7 @@ package test
 import (
 	"context"
 	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -75,11 +76,14 @@ func NewSimSetup(t *testing.T, rng *rand.Rand, txFinalityDepth uint64, blockInte
 	}
 
 	signer := types.LatestSigner(params.AllEthashProtocolChanges)
+	sharedMap := make(map[ethchannel.ChainID]*map[common.Address]uint64)
 	contractBackend := ethchannel.NewContractBackend(
 		simBackend,
 		ethchannel.MakeChainID(simBackend.ChainID()),
 		keystore.NewTransactor(*ksWallet, signer),
 		txFinalityDepth,
+		&sharedMap,
+		&sync.Mutex{},
 	)
 
 	return &SimSetup{
@@ -120,11 +124,14 @@ func NewSetup(t *testing.T, rng *rand.Rand, n int, blockInterval time.Duration, 
 		s.Parts[i] = s.Accs[i].Address()
 		s.SimBackend.FundAddress(ctx, s.Accs[i].Account.Address)
 		s.Recvs[i] = ksWallet.NewRandomAccount(rng).Address().(*ethwallet.Address)
+		sharedMap := make(map[ethchannel.ChainID]*map[common.Address]uint64)
 		cb := ethchannel.NewContractBackend(
 			s.SimBackend,
 			ethchannel.MakeChainID(s.SimBackend.ChainID()),
 			keystore.NewTransactor(*ksWallet, s.SimBackend.Signer),
 			txFinalityDepth,
+			&sharedMap,
+			&sync.Mutex{},
 		)
 		s.Funders[i] = ethchannel.NewFunder(cb)
 		require.True(t, s.Funders[i].RegisterAsset(*s.Asset, ethchannel.NewETHDepositor(), s.Accs[i].Account))

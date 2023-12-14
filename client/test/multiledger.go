@@ -18,6 +18,7 @@ import (
 	"context"
 	"math/big"
 	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -135,11 +136,14 @@ func setupClient(t *testing.T, rng *rand.Rand, l1, l2 testLedger, bus wire.Bus) 
 
 	// Setup contract backends.
 	signer1 := l1.simSetup.SimBackend.Signer
+	sharedMap := make(map[ethchannel.ChainID]*map[common.Address]uint64)
 	cb1 := ethchannel.NewContractBackend(
 		l1.simSetup.CB,
 		l1.ChainID(),
 		keystore.NewTransactor(*w, signer1),
 		l1.simSetup.CB.TxFinalityDepth(),
+		&sharedMap,
+		&sync.Mutex{},
 	)
 	signer2 := l2.simSetup.SimBackend.Signer
 	cb2 := ethchannel.NewContractBackend(
@@ -147,6 +151,8 @@ func setupClient(t *testing.T, rng *rand.Rand, l1, l2 testLedger, bus wire.Bus) 
 		l2.ChainID(),
 		keystore.NewTransactor(*w, signer2),
 		l2.simSetup.CB.TxFinalityDepth(),
+		&sharedMap,
+		&sync.Mutex{},
 	)
 
 	// Setup funder.

@@ -18,6 +18,7 @@ import (
 	"context"
 	"math/big"
 	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -69,11 +70,14 @@ func NewTokenSetup(ctx context.Context, t *testing.T, rng *rand.Rand, txFinality
 	sb.FundAddress(ctx, acc1.Address)
 	acc2 := &ksWallet.NewRandomAccount(rng).(*keystore.Account).Account
 	sb.FundAddress(ctx, acc2.Address)
+	sharedMap := make(map[ethchannel.ChainID]*map[common.Address]uint64)
 	cb := ethchannel.NewContractBackend(
 		sb,
 		ethchannel.MakeChainID(sb.ChainID()),
 		keystore.NewTransactor(*ksWallet, sb.Signer),
 		txFinalityDepth,
+		&sharedMap,
+		&sync.Mutex{},
 	)
 
 	// Setup Perun Token.

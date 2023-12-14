@@ -17,6 +17,7 @@ package subscription_test
 import (
 	"context"
 	"math/big"
+	"sync"
 	"testing"
 	"time"
 
@@ -60,11 +61,14 @@ func TestEventSub(t *testing.T) {
 	ksWallet := wallettest.RandomWallet().(*keystore.Wallet)
 	account := &ksWallet.NewRandomAccount(rng).(*keystore.Account).Account
 	sb.FundAddress(ctx, account.Address)
+	sharedMap := make(map[ethchannel.ChainID]*map[common.Address]uint64)
 	cb := ethchannel.NewContractBackend(
 		sb,
 		ethchannel.MakeChainID(sb.ChainID()),
 		keystore.NewTransactor(*ksWallet, sb.Signer),
 		txFinalityDepth,
+		&sharedMap,
+		&sync.Mutex{},
 	)
 
 	// Setup Perun Token.
@@ -149,11 +153,14 @@ func TestEventSub_Filter(t *testing.T) {
 	ksWallet := wallettest.RandomWallet().(*keystore.Wallet)
 	account := &ksWallet.NewRandomAccount(rng).(*keystore.Account).Account
 	sb.FundAddress(ctx, account.Address)
+	sharedMap := make(map[ethchannel.ChainID]*map[common.Address]uint64)
 	cb := ethchannel.NewContractBackend(
 		sb,
 		ethchannel.MakeChainID(sb.ChainID()),
 		keystore.NewTransactor(*ksWallet, sb.Signer),
 		txFinalityDepth,
+		&sharedMap,
+		&sync.Mutex{},
 	)
 
 	// Setup ETH AssetHolder.

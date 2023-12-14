@@ -18,6 +18,7 @@ import (
 	"context"
 	"math/big"
 	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -78,11 +79,14 @@ func newFunderSetup(rng *rand.Rand) (
 	n := 2
 	simBackend := test.NewSimulatedBackend()
 	ksWallet := wallettest.RandomWallet().(*keystore.Wallet)
+	sharedMap := make(map[ethchannel.ChainID]*map[common.Address]uint64)
 	cb := ethchannel.NewContractBackend(
 		simBackend,
 		ethchannel.MakeChainID(simBackend.ChainID()),
 		keystore.NewTransactor(*ksWallet, simBackend.Signer),
 		TxFinalityDepth,
+		&sharedMap,
+		&sync.Mutex{},
 	)
 	funder := ethchannel.NewFunder(cb)
 	assets := make([]ethchannel.Asset, n)
@@ -400,11 +404,14 @@ func newNFunders(
 	simBackend.FundAddress(ctx, deployAccount.Address)
 	tokenAcc := &ksWallet.NewRandomAccount(rng).(*keystore.Account).Account
 	simBackend.FundAddress(ctx, tokenAcc.Address)
+	sharedMap := make(map[ethchannel.ChainID]*map[common.Address]uint64)
 	cb := ethchannel.NewContractBackend(
 		simBackend,
 		ethchannel.MakeChainID(chainID),
 		keystore.NewTransactor(*ksWallet, simBackend.Signer),
 		TxFinalityDepth,
+		&sharedMap,
+		&sync.Mutex{},
 	)
 
 	// Deploy ETHAssetholder

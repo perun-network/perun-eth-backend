@@ -5,6 +5,7 @@ package assetholder
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 	"strings"
 
@@ -326,6 +327,7 @@ func (_Assetholder *AssetholderTransactorSession) SetOutcome(channelID [32]byte,
 //
 // Solidity: function withdraw((bytes32,address,address,uint256) authorization, bytes signature) returns()
 func (_Assetholder *AssetholderTransactor) Withdraw(opts *bind.TransactOpts, authorization AssetHolderWithdrawalAuth, signature []byte) (*types.Transaction, error) {
+	fmt.Printf("Transaction: GasPrice: %v, GasLimit: %v, \nGasFeeCap: %v, GasTipCap: %v", opts.GasPrice, opts.GasLimit, opts.GasFeeCap, opts.GasTipCap)
 	return _Assetholder.contract.Transact(opts, "withdraw", authorization, signature)
 }
 
