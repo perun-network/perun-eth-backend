@@ -17,7 +17,6 @@ package channel
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -36,27 +35,19 @@ import (
 	"perun.network/go-perun/log"
 )
 
-// Withdraw ensures that a channel has been concluded and the final outcome
+// Withdraw ensures that a channel has been concluded and the final outcome.
 // withdrawn from the asset holders.
 func (a *Adjudicator) Withdraw(ctx context.Context, req channel.AdjudicatorReq, subStates channel.StateMap) error {
-	startEnsuredConcluded := time.Now()
 	if err := a.ensureConcluded(ctx, req, subStates); err != nil {
 		return errors.WithMessage(err, "ensure Concluded")
 	}
-	elapsedEnsuredConcluded := time.Since(startEnsuredConcluded)
-	log.Printf("EnsuredConcluded in %s", elapsedEnsuredConcluded)
-
-	startCheckConcluded := time.Now()
 	if err := a.checkConcludedState(ctx, req, subStates); err != nil {
 		return errors.WithMessage(err, "check concluded state")
 	}
-	elapsedCheckConcluded := time.Since(startCheckConcluded)
-	log.Printf("CheckConcluded in %s", elapsedCheckConcluded)
-
 	return errors.WithMessage(a.ensureWithdrawn(ctx, req), "ensure Withdrawn")
 }
 
-//nolint:funlen
+// ensureWithdrawn ensures that the channel has been withdrawn from the asset.
 func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.AdjudicatorReq) error {
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -72,7 +63,6 @@ func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.Adjudicat
 		}
 		asset := asset // Capture asset locally for usage in closure.
 		g.Go(func() error {
-			startWithdraw := time.Now()
 			// Create subscription
 			contract := bindAssetHolder(a.ContractBackend, asset, index)
 			fundingID := FundingIDs(req.Params.ID(), req.Params.Parts[req.Idx])[0]
@@ -84,7 +74,7 @@ func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.Adjudicat
 			}
 			defer sub.Close()
 
-			// Check for past event
+			// Check for past event.
 			if err := sub.ReadPast(ctx, events); err != nil {
 				return errors.WithMessage(err, "reading past events")
 			}
@@ -99,23 +89,20 @@ func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.Adjudicat
 				return errors.WithMessage(err, "withdrawing assets failed")
 			}
 
-			// Wait for event
+			// Wait for event.
 			go func() {
 				subErr <- sub.Read(ctx, events)
 			}()
 
 			select {
 			case <-events:
-				log.Printf("Withdraw asset %s in %s", asset, time.Since(startWithdraw))
 				return nil
 			case <-ctx.Done():
-				log.Printf("Withdraw asset %s in %s", asset, time.Since(startWithdraw))
 				return errors.Wrap(ctx.Err(), "context cancelled")
 			case err = <-subErr:
 				if err != nil {
 					return errors.WithMessage(err, "subscription error")
 				}
-				log.Printf("Withdraw asset %s in %s", asset, time.Since(startWithdraw))
 				return errors.New("subscription closed")
 			}
 		})
@@ -163,19 +150,15 @@ func (a *Adjudicator) callAssetWithdraw(ctx context.Context, request channel.Adj
 			err = cherrors.CheckIsChainNotReachableError(err)
 			return nil, errors.WithMessagef(err, "withdrawing asset %d with transaction nonce %d", asset.assetIndex, trans.Nonce)
 		}
-		log.Printf("Sent transaction %v at %s", tx.Hash().Hex(), time.Now())
 		return tx, nil
 	}()
 	if err != nil {
 		return err
 	}
-	startWithdraw := time.Now()
 	_, err = a.ConfirmTransaction(ctx, tx, a.txSender)
 	if err != nil && errors.Is(err, errTxTimedOut) {
 		err = client.NewTxTimedoutError(Withdraw.String(), tx.Hash().Hex(), err.Error())
 	}
-	elapsedWithdraw := time.Since(startWithdraw)
-	log.Printf("Wait for withdraw transaction of asset %s in %s", asset, elapsedWithdraw)
 	return errors.WithMessage(err, "mining transaction")
 }
 

@@ -89,7 +89,8 @@ func NewERC20Depositor(token common.Address) *ERC20Depositor {
 }
 
 // Deposit approves the value to be swapped and calls DepositOnly.
-// nolint:funlen
+//
+//nolint:funlen
 func (d *ERC20Depositor) Deposit(ctx context.Context, req DepositReq) (types.Transactions, error) {
 	lockKey := lockKey(req.Account.Address, req.Asset.EthAddress())
 	lock := handleLock(lockKey)
