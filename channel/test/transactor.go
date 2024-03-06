@@ -83,7 +83,7 @@ func GenericSignerTest(t *testing.T, rng *rand.Rand, setup TransactorSetup) {
 		require.NoError(t, err)
 		tx := newTx()
 		signedTx, err := transactOpts.Signer(setup.ValidAcc.Address, tx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		require.NotNil(t, signedTx)
 
 		txHash := setup.Signer.Hash(tx).Bytes()
@@ -97,7 +97,7 @@ func GenericSignerTest(t *testing.T, rng *rand.Rand, setup TransactorSetup) {
 
 	t.Run("missing_account", func(t *testing.T) {
 		_, err := setup.Tr.NewTransactor(setup.MissingAcc)
-		assert.Error(t, err)
+		require.Error(t, err)
 	})
 
 	t.Run("wrong_sender", func(t *testing.T) {
@@ -105,7 +105,7 @@ func GenericSignerTest(t *testing.T, rng *rand.Rand, setup TransactorSetup) {
 		require.NoError(t, err)
 
 		_, err = transactOpts.Signer(setup.MissingAcc.Address, newTx())
-		assert.Error(t, err)
+		require.Error(t, err)
 	})
 }
 

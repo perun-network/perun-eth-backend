@@ -54,10 +54,10 @@ func TestUnlock(t *testing.T) {
 
 	missingAddr := common.BytesToAddress(setup.AddressMarshalled)
 	_, err := simpleWallet.Unlock(ethwallet.AsWalletAddr(missingAddr))
-	assert.Error(t, err, "should error on unlocking missing address")
+	require.Error(t, err, "should error on unlocking missing address")
 
 	acc, err := simpleWallet.Unlock(setup.AddressInWallet)
-	assert.NoError(t, err, "should not error on unlocking missing address")
+	require.NoError(t, err, "should not error on unlocking missing address")
 	assert.NotNil(t, acc, "account should be non nil when error is nil")
 }
 
@@ -74,12 +74,12 @@ func TestSignatures(t *testing.T) {
 	simpleWallet := simple.NewWallet([]*ecdsa.PrivateKey{}...)
 	acc := simpleWallet.NewRandomAccount(pkgtest.Prng(t))
 	sig, err := acc.SignData(dataToSign)
-	assert.NoError(t, err, "Sign with new account should succeed")
+	require.NoError(t, err, "Sign with new account should succeed")
 	assert.NotNil(t, sig)
-	assert.Equal(t, len(sig), ethwallet.SigLen, "Ethereum signature has wrong length")
+	assert.Len(t, sig, ethwallet.SigLen, "Ethereum signature has wrong length")
 	valid, err := new(ethwallet.Backend).VerifySignature(dataToSign, sig, acc.Address())
 	assert.True(t, valid, "Verification should succeed")
-	assert.NoError(t, err, "Verification should succeed")
+	require.NoError(t, err, "Verification should succeed")
 }
 
 func newSetup(t require.TestingT, prng *rand.Rand) (*test.Setup, *simple.Wallet) {

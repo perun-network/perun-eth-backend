@@ -70,7 +70,7 @@ func withdrawMultipleConcurrentFinal(t *testing.T, numParts int, parallel bool) 
 		go ct.StageN("funding loop", numParts, func(rt pkgtest.ConcT) {
 			time.Sleep(sleepTime)
 			req := channel.NewFundingReq(params, state, channel.Index(i), state.Balances)
-			require.NoError(rt, funder.Fund(fundingCtx, *req), "funding should succeed")
+			require.NoError(rt, funder.Fund(fundingCtx, *req), "funding should succeed") //nolint:testifylint
 		})
 	}
 	ct.Wait("funding loop")
@@ -98,7 +98,7 @@ func withdrawMultipleConcurrentFinal(t *testing.T, numParts int, parallel bool) 
 					Tx:     tx,
 				}
 				err := s.Adjs[i].Withdraw(ctx, req, nil)
-				assert.NoError(t, err, "Withdrawing should succeed")
+				require.NoError(t, err, "Withdrawing should succeed") //nolint:testifylint
 			}(i)
 		}
 		close(startBarrier)
@@ -112,7 +112,7 @@ func withdrawMultipleConcurrentFinal(t *testing.T, numParts int, parallel bool) 
 				Tx:     tx,
 			}
 			err := s.Adjs[i].Withdraw(ctx, req, nil)
-			assert.NoError(t, err, "Withdrawing should succeed")
+			require.NoError(t, err, "Withdrawing should succeed")
 		}
 	}
 	assertHoldingsZero(ctx, t, s.CB, params, state.Assets)
@@ -125,6 +125,7 @@ func TestWithdrawZeroBalance(t *testing.T) {
 }
 
 // shouldFunders decides who should fund. 1 indicates funding, 0 indicates skipping.
+//
 //nolint:thelper // Not a helper.
 func testWithdrawZeroBalance(t *testing.T, n int) {
 	rng := pkgtest.Prng(t)
@@ -153,7 +154,7 @@ func testWithdrawZeroBalance(t *testing.T, n int) {
 		i, funder := i, funder
 		go ct.StageN("funding loop", n, func(rt pkgtest.ConcT) {
 			req := channel.NewFundingReq(params, state, channel.Index(i), agreement)
-			require.NoError(rt, funder.Fund(context.Background(), *req), "funding should succeed")
+			require.NoError(rt, funder.Fund(context.Background(), *req), "funding should succeed") //nolint:testifylint
 		})
 	}
 	ct.Wait("funding loop")
@@ -219,9 +220,9 @@ func TestWithdraw(t *testing.T) {
 		err := s.Adjs[0].Withdraw(ctx, req, nil)
 
 		if shouldWork {
-			assert.NoError(t, err, "Withdrawing should work")
+			require.NoError(t, err, "Withdrawing should work")
 		} else {
-			assert.Error(t, err, "Withdrawing should fail")
+			require.Error(t, err, "Withdrawing should fail")
 		}
 	}
 
@@ -288,9 +289,9 @@ func TestWithdrawNonFinal(t *testing.T) {
 	t.Log("Registered ", reg)
 	assert.False(reg.Timeout().IsElapsed(ctx),
 		"registering non-final state should have non-elapsed timeout")
-	assert.NoError(reg.Timeout().Wait(ctx))
+	require.NoError(t, reg.Timeout().Wait(ctx))
 	assert.True(reg.Timeout().IsElapsed(ctx), "timeout should have elapsed after Wait()")
-	assert.NoError(adj.Withdraw(ctx, req, nil),
+	require.NoError(t, adj.Withdraw(ctx, req, nil),
 		"withdrawing should succeed after waiting for timeout")
 }
 

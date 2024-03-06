@@ -87,7 +87,7 @@ func init() {
 type Backend struct{}
 
 // CalcID calculates the channelID as needed by the ethereum smart contracts.
-func (*Backend) CalcID(p *channel.Params) (id channel.ID) {
+func (*Backend) CalcID(p *channel.Params) channel.ID {
 	return CalcID(p)
 }
 
@@ -114,7 +114,7 @@ func (b *Backend) NewAsset() channel.Asset {
 }
 
 // CalcID calculates the channelID as needed by the ethereum smart contracts.
-func CalcID(p *channel.Params) (id channel.ID) {
+func CalcID(p *channel.Params) channel.ID {
 	params := ToEthParams(p)
 	bytes, err := EncodeParams(&params)
 	if err != nil {
@@ -125,7 +125,7 @@ func CalcID(p *channel.Params) (id channel.ID) {
 }
 
 // HashState calculates the hash of a state as needed by the ethereum smart contracts.
-func HashState(s *channel.State) (id channel.ID) {
+func HashState(s *channel.State) channel.ID {
 	state := ToEthState(s)
 	bytes, err := EncodeState(&state)
 	if err != nil {

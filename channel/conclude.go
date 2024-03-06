@@ -161,7 +161,7 @@ func (a *Adjudicator) checkConcludedState(
 	}
 }
 
-func (a *Adjudicator) waitConcludedSecondary(ctx context.Context, req channel.AdjudicatorReq) (concluded bool, err error) {
+func (a *Adjudicator) waitConcludedSecondary(ctx context.Context, req channel.AdjudicatorReq) (bool, error) {
 	// In final Register calls, as the non-initiator, we optimistically wait for
 	// the other party to send the transaction first for
 	// `secondaryWaitBlocks + TxFinalityDepth` many blocks.

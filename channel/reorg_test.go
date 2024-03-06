@@ -51,8 +51,8 @@ func TestSimBackend_Reorg(t *testing.T) {
 		}))
 
 		// Both TX still valid.
-		s.ConfirmTx(tx1, true)
-		s.ConfirmTx(tx2, true)
+		s.ConfirmTx(tx1, true) //nolint:contextcheck
+		s.ConfirmTx(tx2, true) //nolint:contextcheck
 		// No events emitted.
 		s.NoMoreEvents()
 	})
@@ -69,8 +69,8 @@ func TestSimBackend_Reorg(t *testing.T) {
 			return []types.Transactions{nil, nil, txs[1]}
 		}))
 		// Both TX invalid.
-		s.ConfirmTx(tx1, false)
-		s.ConfirmTx(tx2, false)
+		s.ConfirmTx(tx1, false) //nolint:contextcheck
+		s.ConfirmTx(tx2, false) //nolint:contextcheck
 		// All events removed.
 		s.AllowanceEvent(1, false)
 		s.TransferEvent(false)
@@ -90,8 +90,8 @@ func TestSimBackend_Reorg(t *testing.T) {
 			return []types.Transactions{txs[0], nil, nil}
 		}))
 		// Wait for approval, but not transfer.
-		s.ConfirmTx(tx1, true)
-		s.ConfirmTx(tx2, false)
+		s.ConfirmTx(tx1, true)  //nolint:contextcheck
+		s.ConfirmTx(tx2, false) //nolint:contextcheck
 		// Check that the events are removed.
 		s.TransferEvent(false)
 		s.AllowanceEvent(0, false) // allowance is 0 again
@@ -110,8 +110,8 @@ func TestSimBackend_Reorg(t *testing.T) {
 			return []types.Transactions{nil, nil, txs[0]}
 		}))
 		// Wait for approval, but not transfer.
-		s.ConfirmTx(tx1, true)
-		s.ConfirmTx(tx2, false)
+		s.ConfirmTx(tx1, true)  //nolint:contextcheck
+		s.ConfirmTx(tx2, false) //nolint:contextcheck
 		// Check that the transfer rollbacked.
 		s.AllowanceEvent(1, false) // allowance is 1
 		s.TransferEvent(false)
@@ -129,12 +129,12 @@ func TestSimBackend_Reorg(t *testing.T) {
 		// Send TXs.
 		tx1, tx2 := sendTXs(ctx, s)
 		// Reorg, remove transfer.
-		require.NoError(t, s.SB.Reorg(ctx, sendTXsBlockLen, func(txs []types.Transactions) []types.Transactions {
+		require.NoError(t, s.SB.Reorg(ctx, sendTXsBlockLen, func(_ []types.Transactions) []types.Transactions {
 			return []types.Transactions{nil, nil, nil}
 		}))
 		// Both TX invalid.
-		s.ConfirmTx(tx1, false)
-		s.ConfirmTx(tx2, false)
+		s.ConfirmTx(tx1, false) //nolint:contextcheck
+		s.ConfirmTx(tx2, false) //nolint:contextcheck
 		// All events removed.
 		s.AllowanceEvent(1, false)
 		s.TransferEvent(false)
@@ -154,8 +154,8 @@ func TestSimBackend_Reorg(t *testing.T) {
 			return []types.Transactions{txs[1], txs[0], nil}
 		}))
 		// Wait for approval, but not transfer.
-		s.ConfirmTx(tx1, true)
-		s.ConfirmTx(tx2, false)
+		s.ConfirmTx(tx1, true)  //nolint:contextcheck
+		s.ConfirmTx(tx2, false) //nolint:contextcheck
 		// All events removed.
 		s.AllowanceEvent(1, false)
 		s.TransferEvent(false)
@@ -168,17 +168,17 @@ func TestSimBackend_Reorg(t *testing.T) {
 
 // sendTXs sends an IncreaseAllowance and a Transfer TX and asserts that both
 // and their events are confirmed.
-func sendTXs(ctx context.Context, s *test.TokenSetup) (tx1, tx2 *types.Transaction) {
+func sendTXs(ctx context.Context, s *test.TokenSetup) (*types.Transaction, *types.Transaction) {
 	// Send TXs.
-	tx1 = s.IncAllowance(ctx)
-	tx2 = s.Transfer(ctx)
+	tx1 := s.IncAllowance(ctx)
+	tx2 := s.Transfer(ctx)
 	// Wait for TXs confirm.
-	s.ConfirmTx(tx1, true)
-	s.ConfirmTx(tx2, true)
+	s.ConfirmTx(tx1, true) //nolint:contextcheck
+	s.ConfirmTx(tx2, true) //nolint:contextcheck
 	// Wait for Events.
 	s.AllowanceEvent(1, true) // allowance increase to 1
 	s.TransferEvent(true)
 	s.AllowanceEvent(0, true) // allowance decrease to 0 after transfer
 	s.NoMoreEvents()
-	return
+	return tx1, tx2
 }

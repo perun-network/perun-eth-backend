@@ -38,7 +38,7 @@ const defaultTxTimeout = 2 * time.Second
 func testSignState(t *testing.T, accounts []*keystore.Account, state *channel.State) channel.Transaction {
 	t.Helper()
 	tx, err := signState(accounts, state)
-	assert.NoError(t, err, "Sign should not return error")
+	require.NoError(t, err, "Sign should not return error")
 	return tx
 }
 
@@ -95,19 +95,19 @@ func TestSubscribeRegistered(t *testing.T) {
 		Idx:    channel.Index(0),
 		Tx:     tx,
 	}
-	assert.NoError(t, adj.Register(txCtx, req, nil), "Registering state should succeed")
+	require.NoError(t, adj.Register(txCtx, req, nil), "Registering state should succeed")
 	event := sub.Next()
 	assert.Equal(t, event, registered.Next(), "Events should be equal")
-	assert.NoError(t, registered.Close(), "Closing event channel should not error")
+	require.NoError(t, registered.Close(), "Closing event channel should not error")
 	assert.Nil(t, registered.Next(), "Next on closed channel should produce nil")
-	assert.NoError(t, registered.Err(), "Closing should produce no error")
+	require.NoError(t, registered.Err(), "Closing should produce no error")
 	// Setup a new subscription
 	registered2, err := adj.Subscribe(ctx, params.ID())
-	assert.NoError(t, err, "registering two subscriptions should not fail")
+	require.NoError(t, err, "registering two subscriptions should not fail")
 	assert.Equal(t, event, registered2.Next(), "Events should be equal")
-	assert.NoError(t, registered2.Close(), "Closing event channel should not error")
+	require.NoError(t, registered2.Close(), "Closing event channel should not error")
 	assert.Nil(t, registered2.Next(), "Next on closed channel should produce nil")
-	assert.NoError(t, registered2.Err(), "Closing should produce no error")
+	require.NoError(t, registered2.Err(), "Closing should produce no error")
 }
 
 func TestValidateAdjudicator(t *testing.T) {

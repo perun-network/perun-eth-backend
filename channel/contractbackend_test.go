@@ -72,7 +72,7 @@ func Test_calcFundingIDs(t *testing.T) {
 		tt := _tt
 		t.Run(tt.name, func(t *testing.T) {
 			got := ethchannel.FundingIDs(tt.channelID, tt.participants...)
-			assert.Equal(t, got, tt.want, "FundingIDs not as expected")
+			assert.Equal(t, tt.want, got, "FundingIDs not as expected")
 		})
 	}
 }
@@ -95,7 +95,7 @@ func Test_NewTransactor(t *testing.T) {
 		tt := _tt
 		t.Run(tt.name, func(t *testing.T) {
 			transactor, err := s.CB.NewTransactor(tt.ctx, tt.gasLimit, s.TxSender.Account)
-			assert.NoError(t, err, "Creating Transactor should succeed")
+			require.NoError(t, err, "Creating Transactor should succeed")
 			assert.Equal(t, s.TxSender.Account.Address, transactor.From, "Transactor address not properly set")
 			assert.Equal(t, tt.ctx, transactor.Context, "Context not set properly")
 			assert.Equal(t, tt.gasLimit, transactor.GasLimit, "Gas limit not set properly")
@@ -148,7 +148,7 @@ func Test_ConfirmTransaction(t *testing.T) {
 	go func() {
 		// Confirm.
 		r, err := s.CB.ConfirmTransaction(ctx, signed, s.TxSender.Account)
-		require.NoError(t, err)
+		require.NoError(t, err) //nolint:testifylint // We want to fail the test if this fails.
 		confirmed <- r
 	}()
 
@@ -230,7 +230,7 @@ func Test_ReorgRemoveTransaction(t *testing.T) {
 
 	// Do a reorg by adding two more blocks and removing the TX.
 	// The `TxFinalityDepth` would now be reached.
-	err := s.SB.Reorg(ctx, TxFinalityDepth-1, func(txs []types.Transactions) []types.Transactions {
+	err := s.SB.Reorg(ctx, TxFinalityDepth-1, func(_ []types.Transactions) []types.Transactions {
 		return make([]types.Transactions, TxFinalityDepth+1)
 	})
 	require.NoError(t, err)

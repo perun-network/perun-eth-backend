@@ -42,7 +42,7 @@ func TestFundRecovery(t *testing.T) {
 			FredInitBal:       ethclienttest.EtherToWei(50),
 			BalanceDelta:      ethclienttest.EtherToWei(0.001),
 		},
-		func(r *rand.Rand) ([2]ctest.RoleSetup, channel.Asset) {
+		func(_ *rand.Rand) ([2]ctest.RoleSetup, channel.Asset) {
 			setup := channeltest.NewSetup(t, rng, 2, ethclienttest.BlockInterval, 1)
 			for i, adj := range setup.Adjs {
 				adj.Receiver = setup.Accs[i].Account.Address

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	ethchannel "github.com/perun-network/perun-eth-backend/channel"
 	"github.com/perun-network/perun-eth-backend/channel/test"
@@ -59,7 +60,7 @@ func TestBlockTimeout_Wait(t *testing.T) {
 		cancel()
 		select {
 		case err := <-wait:
-			assert.Error(t, err)
+			require.Error(t, err)
 		case <-time.After(ctxTimeout):
 			t.Error("expected Wait to return")
 		}
@@ -85,7 +86,7 @@ func TestBlockTimeout_Wait(t *testing.T) {
 		}
 		select {
 		case err := <-wait:
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		case <-time.After(10 * ctxTimeout):
 			t.Error("expected Wait to return after timeout is reached")
 		}

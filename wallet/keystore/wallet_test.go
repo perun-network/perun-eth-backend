@@ -59,11 +59,11 @@ func TestWallet_Contains(t *testing.T) {
 func TestSignatures(t *testing.T) {
 	acc := ethwallettest.NewTmpWallet().NewAccount()
 	sign, err := acc.SignData(dataToSign)
-	assert.NoError(t, err, "Sign with new account should succeed")
-	assert.Equal(t, len(sign), ethwallet.SigLen, "Ethereum signature has wrong length")
+	require.NoError(t, err, "Sign with new account should succeed")
+	assert.Len(t, sign, ethwallet.SigLen, "Ethereum signature has wrong length")
 	valid, err := new(ethwallet.Backend).VerifySignature(dataToSign, sign, acc.Address())
 	assert.True(t, valid, "Verification should succeed")
-	assert.NoError(t, err, "Verification should succeed")
+	require.NoError(t, err, "Verification should succeed")
 }
 
 func TestBackend(t *testing.T) {
@@ -72,11 +72,11 @@ func TestBackend(t *testing.T) {
 	s := newSetup(t, pkgtest.Prng(t))
 	addr := backend.NewAddress()
 	err := addr.UnmarshalBinary(s.AddressMarshalled)
-	assert.NoError(t, err, "UnmarshalBinary should work")
+	require.NoError(t, err, "UnmarshalBinary should work")
 
 	addr = backend.NewAddress()
 	err = addr.UnmarshalBinary([]byte(invalidAddr))
-	assert.Error(t, err, "UnmarshalBinary for an invalid address should fail")
+	require.Error(t, err, "UnmarshalBinary for an invalid address should fail")
 }
 
 func newSetup(t require.TestingT, prng *rand.Rand) *test.Setup {
@@ -102,6 +102,6 @@ func TestCurve_SigningAndVerifying(t *testing.T) {
 	require.NoError(t, err, "decode sig should not error")
 	addr := ethwallet.Address(common.HexToAddress("f17f52151EbEF6C7334FAD080c5704D77216b732"))
 	b, err := ethwallet.VerifySignature(msg, sig, &addr)
-	assert.NoError(t, err, "VerifySignature should not error")
+	require.NoError(t, err, "VerifySignature should not error")
 	assert.True(t, b, "VerifySignature")
 }

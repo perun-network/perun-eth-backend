@@ -56,7 +56,7 @@ func (id *ChainID) UnmarshalBinary(data []byte) error {
 }
 
 // MarshalBinary marshals the chainID into its binary representation.
-func (id ChainID) MarshalBinary() (data []byte, err error) {
+func (id ChainID) MarshalBinary() ([]byte, error) {
 	if id.Sign() == -1 {
 		return nil, errors.New("cannot marshal negative ChainID")
 	}

@@ -62,7 +62,7 @@ func testConcludeFinal(t *testing.T, numParts int) {
 		i, funder := i, funder
 		go ct.StageN("funding loop", numParts, func(rt pkgtest.ConcT) {
 			req := channel.NewFundingReq(params, state, channel.Index(i), state.Balances)
-			require.NoError(rt, funder.Fund(fundingCtx, *req), "funding should succeed")
+			require.NoError(rt, funder.Fund(fundingCtx, *req), "funding should succeed") //nolint:testifylint
 		})
 	}
 	ct.Wait("funding loop")
@@ -82,16 +82,16 @@ func testConcludeFinal(t *testing.T, numParts int) {
 				Tx:        tx,
 				Secondary: (i != initiator),
 			}
-			diff, err := test.NonceDiff(s.Accs[i].Address(), s.Adjs[i], func() error {
+			diff, err := test.NonceDiff(s.Accs[i].Address(), s.Adjs[i], func() error { //nolint:contextcheck
 				return s.Adjs[i].Register(ctx, req, nil)
 			})
-			require.NoError(t, err, "Withdrawing should succeed")
+			require.NoError(t, err, "Withdrawing should succeed") //nolint:testifylint // we need to check the nonce diff
 			if !req.Secondary {
 				// The Initiator must send a TX.
-				require.Equal(t, diff, 1)
+				require.Equal(t, 1, diff) //nolint:testifylint
 			} else {
 				// Everyone else must NOT send a TX.
-				require.Equal(t, diff, 0)
+				require.Equal(t, 0, diff) //nolint:testifylint
 			}
 		})
 	}
@@ -172,7 +172,8 @@ func TestAdjudicator_ConcludeWithSubChannels(t *testing.T) {
 	assert.NoError(withdraw(ctx, adj, accounts, ledgerChannel, subStates))
 }
 
-func toSubChannelsRecursive(ch paramsAndState, m channelMap) (states []paramsAndState) {
+func toSubChannelsRecursive(ch paramsAndState, m channelMap) []paramsAndState {
+	states := make([]paramsAndState, 0)
 	for _, x := range ch.state.Locked {
 		ch, ok := m[x.ID]
 		if !ok {
@@ -182,7 +183,7 @@ func toSubChannelsRecursive(ch paramsAndState, m channelMap) (states []paramsAnd
 		subStates := toSubChannelsRecursive(ch, m)
 		states = append(states, subStates...)
 	}
-	return
+	return states
 }
 
 type channelMap map[channel.ID]paramsAndState

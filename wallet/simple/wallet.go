@@ -105,7 +105,7 @@ func (w *Wallet) Unlock(address wallet.Address) (wallet.Account, error) {
 func (w *Wallet) LockAll() {}
 
 // IncrementUsage is called whenever a new channel is created or restored.
-func (w *Wallet) IncrementUsage(address wallet.Address) {}
+func (w *Wallet) IncrementUsage(_ wallet.Address) {}
 
 // DecrementUsage is called whenever a channel is settled.
-func (w *Wallet) DecrementUsage(address wallet.Address) {}
+func (w *Wallet) DecrementUsage(_ wallet.Address) {}

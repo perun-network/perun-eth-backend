@@ -110,7 +110,7 @@ func setupLedger(ctx context.Context, t *testing.T, rng *rand.Rand, chainID *big
 	cfg := *params.AllEthashProtocolChanges
 	cfg.ChainID = new(big.Int).Set(chainID)
 	params.AllEthashProtocolChanges = &cfg
-	simSetup := chtest.NewSimSetup(t, rng, txFinalityDepth, blockInterval)
+	simSetup := chtest.NewSimSetup(t, rng, txFinalityDepth, blockInterval) //nolint:contextcheck
 
 	adjudicator, err := ethchannel.DeployAdjudicator(ctx, *simSetup.CB, simSetup.TxSender.Account)
 	require.NoError(t, err)

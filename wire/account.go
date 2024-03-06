@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package wire contains the wire account implementation for the Ethereum Backend.
 package wire
 
 import (

@@ -243,7 +243,7 @@ func (f *Funder) sendFundingTx(
 	request channel.FundingReq,
 	contract assetHolder,
 	fundingID [32]byte,
-) (txs []*types.Transaction, fatal error) {
+) ([]*types.Transaction, error) {
 	bal := request.Agreement[contract.assetIndex][request.Idx]
 	if bal == nil || bal.Sign() <= 0 {
 		f.log.WithFields(log.Fields{"channel": request.Params.ID(), "idx": request.Idx}).Debug("Skipped zero funding.")
@@ -453,7 +453,8 @@ func FundingID(channelID channel.ID, participant perunwallet.Address) [32]byte {
 }
 
 // NumTX returns how many Transactions are needed for the funding request.
-func (f *Funder) NumTX(req channel.FundingReq) (sum uint32, err error) {
+func (f *Funder) NumTX(req channel.FundingReq) (uint32, error) {
+	sum := uint32(0)
 	f.mtx.RLock()
 	defer f.mtx.RUnlock()
 
@@ -464,5 +465,5 @@ func (f *Funder) NumTX(req channel.FundingReq) (sum uint32, err error) {
 		}
 		sum += depositor.NumTX()
 	}
-	return
+	return sum, nil
 }

@@ -72,7 +72,7 @@ func registerMultiple(t *testing.T, numParts int, parallel bool) {
 		go ct.StageN("funding loop", numParts, func(rt pkgtest.ConcT) {
 			time.Sleep(sleepTime)
 			req := channel.NewFundingReq(params, state, channel.Index(i), state.Balances)
-			require.NoError(rt, funder.Fund(fundingCtx, *req), "funding should succeed")
+			require.NoError(rt, funder.Fund(fundingCtx, *req), "funding should succeed") //nolint:testifylint
 		})
 	}
 	ct.Wait("funding loop")
@@ -134,7 +134,7 @@ func registerMultiple(t *testing.T, numParts int, parallel bool) {
 		tx, sub := txs[i], subs[i]
 		event := sub.Next()
 		sub.Close()
-		require.NotEqual(t, event, &channel.RegisteredEvent{}, "registering should return valid event")
+		require.NotEqual(t, &channel.RegisteredEvent{}, event, "registering should return valid event")
 		require.GreaterOrEqualf(t, event.Version(), tx.State.Version, "peer %d: expected version >= %d, got %d", i, event.Version(), tx.State.Version)
 		require.False(t, event.Timeout().IsElapsed(ctx),
 			"registering non-final state should return unelapsed timeout")
@@ -177,9 +177,9 @@ func TestRegister_FinalState(t *testing.T) {
 		Idx:    channel.Index(0),
 		Tx:     tx,
 	}
-	assert.NoError(t, adj.Register(ctx, req, nil), "Registering final state should succeed")
+	require.NoError(t, adj.Register(ctx, req, nil), "Registering final state should succeed")
 	event := sub.Next()
-	assert.NotEqual(t, event, &channel.RegisteredEvent{}, "registering should return valid event")
+	assert.NotEqual(t, &channel.RegisteredEvent{}, event, "registering should return valid event")
 	assert.True(t, event.Timeout().IsElapsed(ctx), "registering final state should return elapsed timeout")
 	t.Logf("Peer[%d] registered successful", 0)
 }
@@ -220,5 +220,5 @@ func TestRegister_CancelledContext(t *testing.T) {
 		Idx:    channel.Index(0),
 		Tx:     tx,
 	}
-	assert.Error(t, adj.Register(ctx, req, nil), "Registering with canceled context should error")
+	require.Error(t, adj.Register(ctx, req, nil), "Registering with canceled context should error")
 }

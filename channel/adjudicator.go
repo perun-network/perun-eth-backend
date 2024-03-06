@@ -106,8 +106,8 @@ func (a *Adjudicator) callRegister(ctx context.Context, req channel.AdjudicatorR
 		}, Register)
 }
 
-func toEthSignedStates(subChannels []channel.SignedState) (ethSubChannels []adjudicator.AdjudicatorSignedState) {
-	ethSubChannels = make([]adjudicator.AdjudicatorSignedState, len(subChannels))
+func toEthSignedStates(subChannels []channel.SignedState) []adjudicator.AdjudicatorSignedState {
+	ethSubChannels := make([]adjudicator.AdjudicatorSignedState, len(subChannels))
 	for i, x := range subChannels {
 		ethSubChannels[i] = adjudicator.AdjudicatorSignedState{
 			Params: ToEthParams(x.Params),
@@ -115,7 +115,7 @@ func toEthSignedStates(subChannels []channel.SignedState) (ethSubChannels []adju
 			Sigs:   x.Sigs,
 		}
 	}
-	return
+	return ethSubChannels
 }
 
 func (a *Adjudicator) callConclude(ctx context.Context, req channel.AdjudicatorReq, subStates channel.StateMap) error {
@@ -187,7 +187,8 @@ func ValidateAdjudicator(ctx context.Context, backend bind.ContractCaller, adjud
 }
 
 // toEthSubStates generates a channel tree in depth-first order.
-func toEthSubStates(state *channel.State, subStates channel.StateMap) (ethSubStates []adjudicator.ChannelState) {
+func toEthSubStates(state *channel.State, subStates channel.StateMap) []adjudicator.ChannelState {
+	var ethSubStates []adjudicator.ChannelState //nolint:prealloc
 	for _, subAlloc := range state.Locked {
 		subState, ok := subStates[subAlloc.ID]
 		if !ok {
@@ -199,5 +200,5 @@ func toEthSubStates(state *channel.State, subStates channel.StateMap) (ethSubSta
 			ethSubStates = append(ethSubStates, _subSubStates...)
 		}
 	}
-	return
+	return ethSubStates
 }

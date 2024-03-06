@@ -73,9 +73,10 @@ func deployMockApp(t *testing.T, s *test.Setup) wallet.Address {
 	return ethwallet.AsWalletAddr(addr)
 }
 
-func clientAddresses(roleSetups []clienttest.RoleSetup) (addresses [2]wire.Address) {
+func clientAddresses(roleSetups []clienttest.RoleSetup) [2]wire.Address {
+	var addresses [2]wire.Address
 	for i := 0; i < len(roleSetups); i++ {
 		addresses[i] = roleSetups[i].Identity.Address()
 	}
-	return
+	return addresses
 }

@@ -176,7 +176,7 @@ func TestResistantEventSub_ReorgRemove(t *testing.T) {
 	NoEvent(require, sub)
 
 	// Go back one block and remove the TX with a reorg.
-	err = s.SB.Reorg(ctx, 1, func(txs []types.Transactions) []types.Transactions {
+	err = s.SB.Reorg(ctx, 1, func(_ []types.Transactions) []types.Transactions {
 		return make([]types.Transactions, 2)
 	})
 	require.NoError(err)

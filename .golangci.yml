@@ -25,6 +25,9 @@ linters:
     - gochecknoinits # We use init functions.
     - gci # We have our own import order.
     - goerr113 # We don't require static errors.
+    - nosnakecase # We use snake case.
+    - depguard # We use go modules.
+    - exhaustruct # We often have uninitialized fields of structs.
 
     # These could be enabled in the future:
     - ifshort # we often don't use `if err := …` for readability.
@@ -35,6 +38,10 @@ linters:
     - scopelint
     - golint
     - interfacer
+    - varcheck
+    - structcheck
+    - deadcode
+    - nosnakecase
 
 linters-settings:
   cyclop:

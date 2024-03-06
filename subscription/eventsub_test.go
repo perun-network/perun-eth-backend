@@ -84,12 +84,12 @@ func TestEventSub(t *testing.T) {
 			log.Debug("Sending ", i)
 			// Send the transaction.
 			opts, err := cb.NewTransactor(ctx, txGasLimit, *account)
-			require.NoError(t, err)
+			require.NoError(t, err) //nolint:testifylint
 			tx, err := token.IncreaseAllowance(opts, account.Address, big.NewInt(1))
-			require.NoError(t, err)
+			require.NoError(t, err) //nolint:testifylint
 			// Wait for the TX to be mined.
 			_, err = cb.ConfirmTransaction(ctx, tx, *account)
-			require.NoError(t, err)
+			require.NoError(t, err) //nolint:testifylint
 		}
 	})
 	sink := make(chan *subscription.Event, 10)
@@ -106,7 +106,7 @@ func TestEventSub(t *testing.T) {
 	require.NoError(t, err)
 	go ct.Stage("sub", func(t pkgtest.ConcT) {
 		defer close(sink)
-		require.NoError(t, sub.Read(context.Background(), sink))
+		require.NoError(t, sub.Read(context.Background(), sink)) //nolint:testifylint
 	})
 
 	go ct.Stage("receiver", func(t pkgtest.ConcT) {
@@ -115,7 +115,7 @@ func TestEventSub(t *testing.T) {
 		for i := 0; i < n; i++ {
 			e := <-sink
 			log.Debug("Read ", i)
-			require.NotNil(t, e)
+			require.NotNil(t, e) //nolint:testifylint
 			// It is possible to receive the same event twice.
 			if e.Log.TxHash == lastTx {
 				i--
@@ -127,8 +127,8 @@ func TestEventSub(t *testing.T) {
 				Spender: account.Address,
 				Value:   big.NewInt(int64(i + 1)),
 			}
-			require.Equal(t, want, e.Data)
-			require.False(t, e.Log.Removed)
+			require.Equal(t, want, e.Data)  //nolint:testifylint
+			require.False(t, e.Log.Removed) //nolint:testifylint
 		}
 		sub.Close()
 	})
@@ -192,7 +192,7 @@ func TestEventSub_Filter(t *testing.T) {
 	require.NoError(t, err)
 	go ct.Stage("sub", func(t pkgtest.ConcT) {
 		defer close(sink)
-		require.NoError(t, sub.Read(context.Background(), sink))
+		require.NoError(t, sub.Read(context.Background(), sink)) //nolint:testifylint
 	})
 
 	// Receive 1 event.

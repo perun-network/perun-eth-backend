@@ -69,13 +69,14 @@ func (a *Address) Equal(addr wallet.Address) bool {
 	return bytes.Equal(a.bytes(), addrTyped.bytes())
 }
 
-// Cmp checks ordering of two addresses.
-//  0 if a==b,
+// Cmp checks the ordering of two addresses.
+// It returns:
+//
+//	0 if a == b,
+//
 // -1 if a < b,
 // +1 if a > b.
-// https://godoc.org/bytes#Compare
-//
-// Panics if the input is not of the same type as the receiver.
+// It panics if the input is not of the same type as the receiver.
 func (a *Address) Cmp(addr wallet.Address) int {
 	addrTyped, ok := addr.(*Address)
 	if !ok {

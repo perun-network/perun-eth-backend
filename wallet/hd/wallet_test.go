@@ -75,7 +75,7 @@ func TestSignWithMissingKey(t *testing.T) {
 	acc := hd.NewAccountFromEth(accsWallet, accounts.Account{Address: missingAddr})
 	require.NotNil(t, acc)
 	_, err := acc.SignData(setup.DataToSign)
-	assert.Error(t, err, "Sign with missing account should fail")
+	require.Error(t, err, "Sign with missing account should fail")
 }
 
 func TestUnlock(t *testing.T) {
@@ -83,10 +83,10 @@ func TestUnlock(t *testing.T) {
 
 	missingAddr := common.BytesToAddress(setup.AddressMarshalled)
 	_, err := hdWallet.Unlock(ethwallet.AsWalletAddr(missingAddr))
-	assert.Error(t, err, "should error on unlocking missing address")
+	require.Error(t, err, "should error on unlocking missing address")
 
 	acc, err := hdWallet.Unlock(setup.AddressInWallet)
-	assert.NoError(t, err, "should not error on unlocking valid address")
+	require.NoError(t, err, "should not error on unlocking valid address")
 	assert.NotNil(t, acc, "account should be non nil when error is nil")
 }
 

@@ -16,7 +16,6 @@ package channel
 
 import (
 	"context"
-	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -44,7 +43,7 @@ const deployGasLimit = 6600000
 // deadline is exceeded when waiting for the transaction to be mined.
 func DeployPerunToken(ctx context.Context, backend ContractBackend, deployer accounts.Account, initAccs []common.Address, initBals *big.Int) (common.Address, error) {
 	return deployContract(ctx, backend, deployer, "PerunToken",
-		func(auth *bind.TransactOpts, cb ContractBackend) (common.Address, *types.Transaction, error) {
+		func(auth *bind.TransactOpts, _ ContractBackend) (common.Address, *types.Transaction, error) {
 			addr, tx, _, err := peruntoken.DeployPeruntoken(auth, backend, initAccs, initBals)
 			return addr, tx, err
 		})
@@ -66,7 +65,7 @@ func DeployETHAssetholder(ctx context.Context, backend ContractBackend, adjudica
 // deadline is exceeded when waiting for the transaction to be mined.
 func DeployERC20Assetholder(ctx context.Context, backend ContractBackend, adjudicatorAddr common.Address, tokenAddr common.Address, deployer accounts.Account) (common.Address, error) {
 	return deployContract(ctx, backend, deployer, "ERC20AssetHolder",
-		func(auth *bind.TransactOpts, cb ContractBackend) (common.Address, *types.Transaction, error) {
+		func(auth *bind.TransactOpts, _ ContractBackend) (common.Address, *types.Transaction, error) {
 			addr, tx, _, err := assetholdererc20.DeployAssetholdererc20(auth, backend, adjudicatorAddr, tokenAddr)
 			return addr, tx, err
 		})
@@ -77,7 +76,7 @@ func DeployERC20Assetholder(ctx context.Context, backend ContractBackend, adjudi
 // deadline is exceeded when waiting for the transaction to be mined.
 func DeployAdjudicator(ctx context.Context, backend ContractBackend, deployer accounts.Account) (common.Address, error) {
 	return deployContract(ctx, backend, deployer, "Adjudicator",
-		func(auth *bind.TransactOpts, cb ContractBackend) (common.Address, *types.Transaction, error) {
+		func(auth *bind.TransactOpts, _ ContractBackend) (common.Address, *types.Transaction, error) {
 			addr, tx, _, err := adjudicator.DeployAdjudicator(auth, backend)
 			return addr, tx, err
 		})
@@ -88,7 +87,7 @@ func DeployAdjudicator(ctx context.Context, backend ContractBackend, deployer ac
 // deadline is exceeded when waiting for the transaction to be mined.
 func DeployTrivialApp(ctx context.Context, backend ContractBackend, deployer accounts.Account) (common.Address, error) {
 	return deployContract(ctx, backend, deployer, "TrivialApp",
-		func(auth *bind.TransactOpts, cb ContractBackend) (common.Address, *types.Transaction, error) {
+		func(auth *bind.TransactOpts, _ ContractBackend) (common.Address, *types.Transaction, error) {
 			addr, tx, _, err := trivialapp.DeployTrivialapp(auth, backend)
 			return addr, tx, errors.WithStack(err)
 		})
@@ -109,7 +108,7 @@ func deployContract(ctx context.Context, cb ContractBackend, deployer accounts.A
 	if _, err := waitDeployed(ctx, &cb, tx); err != nil {
 		switch {
 		case pcontext.IsContextError(err):
-			txType := fmt.Sprintf("deploy %s", name)
+			txType := "deploy " + name
 			err = client.NewTxTimedoutError(txType, tx.Hash().Hex(), err.Error())
 		case cherrors.IsChainNotReachableError(err):
 			err = client.NewChainNotReachableError(err)

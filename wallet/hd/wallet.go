@@ -64,7 +64,8 @@ func NewWallet(hdwallet accounts.Wallet, derivationPath string, numUsedAccs uint
 	return wallet, wallet.deriveAccounts(numUsedAccs)
 }
 
-func (w *Wallet) deriveAccounts(numUsedAccs uint) (err error) {
+func (w *Wallet) deriveAccounts(numUsedAccs uint) error {
+	var err error
 	for i := uint(0); i < numUsedAccs; i++ {
 		if _, err = w.newAccount(); err != nil {
 			break
@@ -130,7 +131,7 @@ func (w *Wallet) Unlock(addr wallet.Address) (wallet.Account, error) {
 func (w *Wallet) LockAll() {}
 
 // IncrementUsage implements wallet.Wallet. It is a noop.
-func (w *Wallet) IncrementUsage(a wallet.Address) {}
+func (w *Wallet) IncrementUsage(_ wallet.Address) {}
 
 // DecrementUsage implements wallet.Wallet. It is a noop.
-func (w *Wallet) DecrementUsage(a wallet.Address) {}
+func (w *Wallet) DecrementUsage(_ wallet.Address) {}

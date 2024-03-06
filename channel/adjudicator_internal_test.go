@@ -33,23 +33,23 @@ func Test_toEthSubStates(t *testing.T) {
 
 	tests := []struct {
 		title string
-		setup func() (state *channel.State, subStates channel.StateMap, expected []adjudicator.ChannelState)
+		setup func() (*channel.State, channel.StateMap, []adjudicator.ChannelState)
 	}{
 		{
 			title: "nil map gives nil slice",
-			setup: func() (state *channel.State, subStates channel.StateMap, expected []adjudicator.ChannelState) {
+			setup: func() (*channel.State, channel.StateMap, []adjudicator.ChannelState) {
 				return channeltest.NewRandomState(rng), nil, nil
 			},
 		},
 		{
 			title: "fresh map gives nil slice",
-			setup: func() (state *channel.State, subStates channel.StateMap, expected []adjudicator.ChannelState) {
+			setup: func() (*channel.State, channel.StateMap, []adjudicator.ChannelState) {
 				return channeltest.NewRandomState(rng), nil, nil
 			},
 		},
 		{
 			title: "1 layer of sub-channels",
-			setup: func() (state *channel.State, subStates channel.StateMap, expected []adjudicator.ChannelState) {
+			setup: func() (*channel.State, channel.StateMap, []adjudicator.ChannelState) {
 				// ch[0]( ch[1], ch[2], ch[3] )
 				ch := genStates(rng, 4)
 				ch[0].AddSubAlloc(*ch[1].ToSubAlloc())
@@ -60,7 +60,7 @@ func Test_toEthSubStates(t *testing.T) {
 		},
 		{
 			title: "2 layers of sub-channels",
-			setup: func() (state *channel.State, subStates channel.StateMap, expected []adjudicator.ChannelState) {
+			setup: func() (*channel.State, channel.StateMap, []adjudicator.ChannelState) {
 				// ch[0]( ch[1]( ch[2], ch[3] ), ch[4], ch[5] (ch[6] ) )
 				ch := genStates(rng, 7)
 				ch[0].AddSubAlloc(*ch[1].ToSubAlloc())
@@ -81,24 +81,24 @@ func Test_toEthSubStates(t *testing.T) {
 	}
 }
 
-func genStates(rng *rand.Rand, n int) (states []*channel.State) {
-	states = make([]*channel.State, n)
+func genStates(rng *rand.Rand, n int) []*channel.State {
+	states := make([]*channel.State, n)
 	for i := range states {
 		states[i] = channeltest.NewRandomState(rng)
 	}
-	return
+	return states
 }
 
-func toStateMap(states ...*channel.State) (_states channel.StateMap) {
-	_states = channel.MakeStateMap()
+func toStateMap(states ...*channel.State) channel.StateMap {
+	_states := channel.MakeStateMap()
 	_states.Add(states...)
-	return
+	return _states
 }
 
-func toEthStates(states ...*channel.State) (_states []adjudicator.ChannelState) {
-	_states = make([]adjudicator.ChannelState, len(states))
+func toEthStates(states ...*channel.State) []adjudicator.ChannelState {
+	_states := make([]adjudicator.ChannelState, len(states))
 	for i, s := range states {
 		_states[i] = ToEthState(s)
 	}
-	return
+	return _states
 }

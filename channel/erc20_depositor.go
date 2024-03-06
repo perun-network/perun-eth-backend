@@ -41,8 +41,12 @@ type ERC20Depositor struct {
 // Return value of ERC20Depositor.NumTx.
 const erc20DepositorNumTx = 2
 
-// Keep track of the increase allowance and deposit processes.
+// depositLocksMtx is a mutex to manage concurrent access to the depositLocks map.
 var depositLocksMtx sync.Mutex
+
+// depositLocks is a map to keep track of locks associated with deposit processes.
+// The keys represent unique identifiers for each deposit process, and the values
+// are pointers to sync.Mutex instances used for synchronization.
 var depositLocks = make(map[string]*sync.Mutex)
 
 // DepositResult is created to keep track of the returned values.

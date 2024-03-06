@@ -101,7 +101,8 @@ evloop:
 	close(r.next)
 }
 
-func (r *RegisteredSub) processNext(ctx context.Context, a *Adjudicator, _next *subscription.Event) (err error) {
+func (r *RegisteredSub) processNext(ctx context.Context, a *Adjudicator, _next *subscription.Event) error {
+	var err error
 	next, ok := _next.Data.(*adjudicator.AdjudicatorChannelUpdate)
 	next.Raw = _next.Log
 	if !ok {
@@ -120,7 +121,7 @@ func (r *RegisteredSub) processNext(ctx context.Context, a *Adjudicator, _next *
 			var e channel.AdjudicatorEvent
 			e, err = a.convertEvent(ctx, next)
 			if err != nil {
-				return
+				return err
 			}
 
 			r.next <- e
@@ -131,7 +132,7 @@ func (r *RegisteredSub) processNext(ctx context.Context, a *Adjudicator, _next *
 		var e channel.AdjudicatorEvent
 		e, err = a.convertEvent(ctx, next)
 		if err != nil {
-			return
+			return err
 		}
 
 		r.next <- e
