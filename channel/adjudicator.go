@@ -193,9 +193,9 @@ func toEthSubStates(state *channel.State, subStates channel.StateMap) (ethSubSta
 		if !ok {
 			log.Panic("sub-state not found")
 		}
-		ethSubStates = append(ethSubStates, ToEthState(subState))
-		if len(subState.Locked) > 0 {
-			_subSubStates := toEthSubStates(subState, subStates)
+		ethSubStates = append(ethSubStates, ToEthState(subState.State))
+		if len(subState.State.Locked) > 0 {
+			_subSubStates := toEthSubStates(subState.State, subStates)
 			ethSubStates = append(ethSubStates, _subSubStates...)
 		}
 	}

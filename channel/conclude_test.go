@@ -267,7 +267,8 @@ func register(ctx context.Context, adj *test.SimAdjudicator, accounts []*keystor
 
 func addSubStates(subStates channel.StateMap, channels ...paramsAndState) {
 	for _, c := range channels {
-		subStates.Add(c.state.Clone())
+		ss := &channel.SignedState{Params: c.params.Clone(), State: c.state.Clone()}
+		subStates.Add(ss)
 	}
 }
 

@@ -124,7 +124,7 @@ func (a *Adjudicator) checkConcludedState(
 	states := MakeStateMap()
 	states.Add(req.Tx.State)
 	for _, v := range subStates {
-		states.Add(v)
+		states.Add(v.State)
 	}
 
 	// Start event subscription for each channel.

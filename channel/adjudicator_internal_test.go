@@ -54,10 +54,14 @@ func Test_toEthSubStates(t *testing.T) {
 			setup: func() (state *channel.State, subStates channel.StateMap, expected []adjudicator.ChannelState) {
 				// ch[0]( ch[1], ch[2], ch[3] )
 				ch := genStates(rng, 4)
-				ch[0].AddSubAlloc(*ch[1].ToSubAlloc())
-				ch[0].AddSubAlloc(*ch[2].ToSubAlloc())
-				ch[0].AddSubAlloc(*ch[3].ToSubAlloc())
-				return ch[0], toStateMap(ch[1:]...), toEthStates(ch[1:]...)
+				ch[0].State.AddSubAlloc(*ch[1].State.ToSubAlloc())
+				ch[0].State.AddSubAlloc(*ch[2].State.ToSubAlloc())
+				ch[0].State.AddSubAlloc(*ch[3].State.ToSubAlloc())
+				var ethStates []adjudicator.ChannelState
+				for i := 1; i < len(ch); i++ {
+					ethStates = append(ethStates, ToEthState(ch[i].State))
+				}
+				return ch[0].State, toStateMap(ch[1:]...), ethStates
 			},
 		},
 		{
@@ -65,13 +69,17 @@ func Test_toEthSubStates(t *testing.T) {
 			setup: func() (state *channel.State, subStates channel.StateMap, expected []adjudicator.ChannelState) {
 				// ch[0]( ch[1]( ch[2], ch[3] ), ch[4], ch[5] (ch[6] ) )
 				ch := genStates(rng, 7)
-				ch[0].AddSubAlloc(*ch[1].ToSubAlloc())
-				ch[0].AddSubAlloc(*ch[4].ToSubAlloc())
-				ch[0].AddSubAlloc(*ch[5].ToSubAlloc())
-				ch[1].AddSubAlloc(*ch[2].ToSubAlloc())
-				ch[1].AddSubAlloc(*ch[3].ToSubAlloc())
-				ch[5].AddSubAlloc(*ch[6].ToSubAlloc())
-				return ch[0], toStateMap(ch[1:]...), toEthStates(ch[1:]...)
+				ch[0].State.AddSubAlloc(*ch[1].State.ToSubAlloc())
+				ch[0].State.AddSubAlloc(*ch[4].State.ToSubAlloc())
+				ch[0].State.AddSubAlloc(*ch[5].State.ToSubAlloc())
+				ch[1].State.AddSubAlloc(*ch[2].State.ToSubAlloc())
+				ch[1].State.AddSubAlloc(*ch[3].State.ToSubAlloc())
+				ch[5].State.AddSubAlloc(*ch[6].State.ToSubAlloc())
+				var ethStates []adjudicator.ChannelState
+				for i := 1; i < len(ch); i++ {
+					ethStates = append(ethStates, ToEthState(ch[i].State))
+				}
+				return ch[0].State, toStateMap(ch[1:]...), ethStates
 			},
 		},
 	}
@@ -83,15 +91,16 @@ func Test_toEthSubStates(t *testing.T) {
 	}
 }
 
-func genStates(rng *rand.Rand, n int) (states []*channel.State) {
-	states = make([]*channel.State, n)
+func genStates(rng *rand.Rand, n int) (states []*channel.SignedState) {
+	states = make([]*channel.SignedState, n)
 	for i := range states {
-		states[i] = channeltest.NewRandomState(rng, channeltest.WithBackend(wallet.BackendID))
+		params, state := channeltest.NewRandomParamsAndState(rng, channeltest.WithBackend(wallet.BackendID))
+		states[i] = &channel.SignedState{Params: params, State: state}
 	}
 	return
 }
 
-func toStateMap(states ...*channel.State) (_states channel.StateMap) {
+func toStateMap(states ...*channel.SignedState) (_states channel.StateMap) {
 	_states = channel.MakeStateMap()
 	_states.Add(states...)
 	return
