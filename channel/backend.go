@@ -367,11 +367,7 @@ func fromEthAssets(assets []adjudicator.ChannelAsset, bIDs []wallet.BackendID) [
 		if bIDs[i] == ethwallet.BackendID {
 			_assets[i] = NewAsset(a.ChainID, a.EthHolder)
 		} else {
-			_assets[i] = &Asset{}
-			err := _assets[i].UnmarshalBinary(a.CcHolder)
-			if err != nil {
-				log.Panicf("error decoding asset: %v", err)
-			}
+			_assets[i] = NewCCAsset(a.ChainID, a.CcHolder)
 		}
 	}
 	return _assets
