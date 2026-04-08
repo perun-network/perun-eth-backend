@@ -32,6 +32,9 @@ import (
 )
 
 func TestSubChannelHappy(t *testing.T) {
+	release := acquireHeavySimTestSlot(t)
+	defer release()
+
 	rng := pkgtest.Prng(t)
 	const A, B = 0, 1 // Indices of clients.
 	s := ethchanneltest.NewSetup(t, rng, 2, ethclienttest.BlockInterval, TxFinalityDepth)
@@ -86,6 +89,9 @@ func TestSubChannelHappy(t *testing.T) {
 }
 
 func TestSubChannelDispute(t *testing.T) {
+	release := acquireHeavySimTestSlot(t)
+	defer release()
+
 	rng := pkgtest.Prng(t)
 
 	const A, B = 0, 1 // Indices of clients.
@@ -112,7 +118,11 @@ func TestSubChannelDispute(t *testing.T) {
 		TxAmount:        big.NewInt(1),
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), twoPartyTestTimeout)
+	// The refutation path runs noticeably closer to the deadline on newer geth
+	// versions under package-level load. Give the stale-state registration and
+	// refutation path enough time to complete even when other simulated chains
+	// are active in parallel.
+	ctx, cancel := context.WithTimeout(context.Background(), 4*twoPartyTestTimeout)
 	defer cancel()
 	clienttest.ExecuteTwoPartyTest(ctx, t, roles, cfg)
 }

@@ -28,6 +28,9 @@ import (
 )
 
 func TestFundRecovery(t *testing.T) {
+	release := acquireHeavySimTestSlot(t)
+	defer release()
+
 	rng := test.Prng(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

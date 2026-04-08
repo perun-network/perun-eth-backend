@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/pkg/errors"
 
@@ -34,10 +35,22 @@ const (
 	secondaryWaitBlocks = 2
 	adjEventBuffSize    = 10
 	adjHeaderBuffSize   = 10
+	// concludeWaitSlack absorbs simulated-backend timing jitter between timeout
+	// observation and the settle transaction reaching the chain.
+	concludeWaitSlack = 12
 )
 
 // StateMap represents a channel state tree.
 type StateMap map[channel.ID]*channel.State
+
+type disputeInfo struct {
+	Timeout           uint64
+	ChallengeDuration uint64
+	Version           uint64
+	Phase             uint8
+	StateHash         [32]byte
+	HasApp            bool
+}
 
 // MakeStateMap creates a new StateMap object.
 func MakeStateMap() StateMap {
@@ -85,6 +98,13 @@ func (a *Adjudicator) ensureConcluded(ctx context.Context, req channel.Adjudicat
 	err = a.conclude(ctx, req, subStates)
 	if err != nil {
 		return errors.WithMessage(err, "concluding")
+	}
+	// A concurrent conclude can make our own transaction revert. In that case,
+	// re-check the current on-chain state before waiting for a fresh event.
+	if concluded, err := a.isConcluded(ctx, req.Tx.ID); err != nil {
+		return errors.WithMessage(err, "re-checking concluded state")
+	} else if concluded {
+		return nil
 	}
 
 	// Wait for concluded event.
@@ -201,7 +221,15 @@ func (a *Adjudicator) conclude(ctx context.Context, req channel.AdjudicatorReq, 
 	if err != nil {
 		return errors.WithMessage(err, "checking force execution")
 	}
-	if req.Tx.IsFinal && !forceExecuted {
+	dispute, err := a.dispute(ctx, req.Params.ID())
+	if err != nil {
+		return errors.WithMessage(err, "querying dispute")
+	}
+	recorded := hasRecordedDispute(dispute)
+	// concludeFinal only works as the fast path before the channel entered the
+	// regular dispute lifecycle. Once there is already an on-chain dispute, we
+	// must use conclude after the timeout even for final states.
+	if req.Tx.IsFinal && !forceExecuted && (!recorded || (dispute.Phase != phaseDispute && dispute.Phase != phaseForceExec)) {
 		err = errors.WithMessage(a.callConcludeFinal(ctx, req), "calling concludeFinal")
 	} else {
 		err = errors.WithMessage(a.callConclude(ctx, req, subStates), "calling conclude")
@@ -216,11 +244,25 @@ func (a *Adjudicator) conclude(ctx context.Context, req channel.AdjudicatorReq, 
 
 // isConcluded returns whether a channel is already concluded.
 func (a *Adjudicator) isConcluded(ctx context.Context, ch channel.ID) (bool, error) {
-	sub, events, subErr, err := a.createEventSub(ctx, ch, true)
+	dispute, err := a.dispute(ctx, ch)
+	if err != nil {
+		return false, errors.WithMessage(err, "querying dispute")
+	}
+	if hasRecordedDispute(dispute) && dispute.Phase == phaseConcluded {
+		return true, nil
+	}
+
+	sub, err := subscription.NewEventSub(ctx, a.ContractBackend, a.bound, updateEventType(ch), startBlockOffset)
 	if err != nil {
 		return false, errors.WithMessage(err, "subscribing")
 	}
 	defer sub.Close()
+	events := make(chan *subscription.Event, adjEventBuffSize)
+	subErr := make(chan error, 1)
+	go func() {
+		defer close(events)
+		subErr <- sub.ReadPast(ctx, events)
+	}()
 
 	// Read all events and check for concluded.
 	for _e := range events {
@@ -272,73 +314,46 @@ func (a *Adjudicator) createEventSub(
 
 // waitConcludable waits until the specified channel is concludable.
 func (a *Adjudicator) waitConcludable(ctx context.Context, req channel.AdjudicatorReq) error {
-	// If final, we can conclude immediately.
-	if req.Tx.IsFinal {
+	dispute, err := a.dispute(ctx, req.Tx.ID)
+	if err != nil {
+		return errors.WithMessage(err, "querying dispute")
+	}
+	recorded := hasRecordedDispute(dispute)
+
+	// Final states can be concluded immediately if the channel is not already in
+	// a dispute. Once a dispute exists, we must respect its timeout and fall back
+	// to the regular conclude path afterwards.
+	if req.Tx.IsFinal && (!recorded || (dispute.Phase != phaseDispute && dispute.Phase != phaseForceExec)) {
+		return nil
+	}
+	if !recorded {
 		return nil
 	}
 
-	sub, events, subErr, err := a.createEventSub(ctx, req.Tx.ID, true)
-	if err != nil {
-		return errors.WithMessage(err, "subscribing")
-	}
-	defer sub.Close()
-
-	// Process events.
-	var up *adjudicator.AdjudicatorChannelUpdate
-	for e := range events {
-		var ok bool
-		up, ok = e.Data.(*adjudicator.AdjudicatorChannelUpdate)
-		if !ok {
-			log.Panic("wrong event type")
+	switch dispute.Phase {
+	case phaseDispute:
+		t := dispute.Timeout
+		if dispute.HasApp && !channel.IsNoApp(req.Params.App) {
+			t += dispute.ChallengeDuration
 		}
-		if up.Phase == phaseDispute {
-			// Wait until channel is concludable. If we have an app channel, we need
-			// to wait two phases.
-			t := up.Timeout
-			if !channel.IsNoApp(req.Params.App) {
-				t += req.Params.ChallengeDuration
-			}
-			timeout := NewBlockTimeout(a.ContractInterface, t)
-			err := timeout.Wait(ctx)
-			if err != nil {
-				return err
-			}
-		}
+		t += concludeWaitSlack
+		return NewBlockTimeout(a.ContractInterface, t).Wait(ctx)
+	case phaseForceExec:
+		return NewBlockTimeout(a.ContractInterface, dispute.Timeout+concludeWaitSlack).Wait(ctx)
+	case phaseConcluded:
+		return nil
+	default:
+		return nil
 	}
-	return errors.WithMessage(<-subErr, "reading past events")
 }
 
 // isForceExecuted returns whether a channel is in the forced execution phase.
 func (a *Adjudicator) isForceExecuted(_ctx context.Context, c channel.ID) (bool, error) {
-	ctx, cancel := context.WithCancel(_ctx)
-	defer cancel()
-	sub, err := subscription.NewEventSub(ctx, a.ContractBackend, a.bound, updateEventType(c), startBlockOffset)
+	dispute, err := a.dispute(_ctx, c)
 	if err != nil {
-		return false, errors.WithMessage(err, "subscribing")
+		return false, errors.WithMessage(err, "querying dispute")
 	}
-	defer sub.Close()
-	events := make(chan *subscription.Event, adjEventBuffSize)
-	subErr := make(chan error, 1)
-	// Write the events into events.
-	go func() {
-		defer close(events)
-		subErr <- sub.ReadPast(ctx, events)
-	}()
-	// Read all events and check for force execution.
-	var lastEvent *subscription.Event
-	for _e := range events {
-		lastEvent = _e
-	}
-	if lastEvent != nil {
-		e, ok := lastEvent.Data.(*adjudicator.AdjudicatorChannelUpdate)
-		if !ok {
-			log.Panic("wrong event type")
-		}
-		if e.Phase == phaseForceExec {
-			return true, nil
-		}
-	}
-	return false, errors.WithMessage(<-subErr, "reading past events")
+	return hasRecordedDispute(dispute) && dispute.Phase == phaseForceExec, nil
 }
 
 func updateEventType(channelID [32]byte) subscription.EventFactory {
@@ -350,6 +365,14 @@ func updateEventType(channelID [32]byte) subscription.EventFactory {
 			Filter: [][]interface{}{{channelID}},
 		}
 	}
+}
+
+func (a *Adjudicator) dispute(ctx context.Context, ch channel.ID) (disputeInfo, error) {
+	return a.contract.Disputes(&bind.CallOpts{Context: ctx}, ch)
+}
+
+func hasRecordedDispute(dispute disputeInfo) bool {
+	return dispute.Timeout != 0 || dispute.ChallengeDuration != 0 || dispute.StateHash != ([32]byte{})
 }
 
 // waitConcludedForNBlocks waits for up to numBlocks blocks for a Concluded

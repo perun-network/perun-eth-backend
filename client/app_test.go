@@ -34,6 +34,9 @@ import (
 )
 
 func TestProgression(t *testing.T) {
+	release := acquireHeavySimTestSlot(t)
+	defer release()
+
 	rng := pkgtest.Prng(t)
 
 	names := []string{"Paul", "Paula"}

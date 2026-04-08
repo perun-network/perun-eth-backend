@@ -343,7 +343,9 @@ func TestFunder_PeerTimeout(t *testing.T) {
 func testFundingTimeout(t *testing.T, faultyPeer, n int) {
 	t.Helper()
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(context.Background(), defaultTxTimeout*time.Duration(n))
+	release := acquireHeavySimTestSlot()
+	defer release()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*defaultTxTimeout*time.Duration(n))
 	defer cancel()
 	rng := pkgtest.Prng(t, faultyPeer, n)
 	ct := pkgtest.NewConcurrent(t)
@@ -404,7 +406,11 @@ func TestFunder_Fund_multi(t *testing.T) {
 func testFunderFunding(t *testing.T, n int) {
 	t.Helper()
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(context.Background(), defaultTxTimeout*time.Duration(n))
+	release := acquireHeavySimTestSlot()
+	defer release()
+	// Larger funding scenarios can run close to the default deadline when the
+	// package test suite is under heavy parallel load.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*defaultTxTimeout*time.Duration(n))
 	defer cancel()
 	rng := pkgtest.Prng(t, n)
 	ct := pkgtest.NewConcurrent(t)
@@ -424,7 +430,9 @@ func testFunderFunding(t *testing.T, n int) {
 
 	ct.Wait("funding")
 	// Check result balances
-	assert.NoError(t, compareOnChainAlloc(ctx, params, alloc.Balances, alloc.Assets, &funders[0].ContractBackend))
+	verifyCtx, verifyCancel := context.WithTimeout(context.Background(), defaultTxTimeout*time.Duration(n))
+	defer verifyCancel()
+	assert.NoError(t, compareOnChainAlloc(verifyCtx, params, alloc.Balances, alloc.Assets, &funders[0].ContractBackend))
 }
 
 func newNFunders(

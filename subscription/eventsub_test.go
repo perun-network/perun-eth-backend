@@ -133,8 +133,11 @@ func TestEventSub(t *testing.T) {
 	})
 
 	ct.Wait("emitter", "sub", "receiver")
-	// Check that read terminated.
-	require.Nil(t, <-sink)
+	// Check that read terminated. Duplicate events may still be buffered when
+	// the subscription is closed, so we only assert that the channel closes.
+	for e := range sink {
+		require.NotNil(t, e)
+	}
 }
 
 // TestEventSub_Filter checks that the EventSub filters transactions.

@@ -99,13 +99,17 @@ func NewTokenSetup(ctx context.Context, t *testing.T, rng *rand.Rand, txFinality
 
 // StartSubs starts the Approval and Transfer subscriptions.
 func (s *TokenSetup) StartSubs() {
+	header, err := s.SB.HeaderByNumber(context.Background(), nil)
+	require.NoError(s.T, err)
+	start := header.Number.Uint64() + 1
+
 	// Approval sub.
 	sinkApproval := make(chan *peruntoken.PeruntokenApproval, eventBuffSize)
-	subApproval, err := s.Token.WatchApproval(&bind.WatchOpts{}, sinkApproval, nil, nil)
+	subApproval, err := s.Token.WatchApproval(&bind.WatchOpts{Start: &start}, sinkApproval, []common.Address{s.Acc1.Address}, []common.Address{s.Acc2.Address})
 	require.NoError(s.T, err)
 	// Transfer sub.
 	sinkTransfer := make(chan *peruntoken.PeruntokenTransfer, eventBuffSize)
-	subTransfer, err := s.Token.WatchTransfer(&bind.WatchOpts{}, sinkTransfer, nil, nil)
+	subTransfer, err := s.Token.WatchTransfer(&bind.WatchOpts{Start: &start}, sinkTransfer, []common.Address{s.Acc1.Address}, []common.Address{s.Acc2.Address})
 	require.NoError(s.T, err)
 
 	s.subApproval = subApproval

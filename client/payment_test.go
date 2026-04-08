@@ -31,6 +31,7 @@ import (
 	ctest "github.com/perun-network/perun-eth-backend/client/test"
 	"github.com/perun-network/perun-eth-backend/wallet"
 
+	pchannel "perun.network/go-perun/channel"
 	chtest "perun.network/go-perun/channel/test"
 	"perun.network/go-perun/client"
 	clienttest "perun.network/go-perun/client/test"
@@ -45,6 +46,9 @@ const (
 )
 
 func TestPaymentHappy(t *testing.T) {
+	release := acquireHeavySimTestSlot(t)
+	defer release()
+
 	log.Info("Starting happy test")
 	rng := pkgtest.Prng(t)
 
@@ -63,13 +67,14 @@ func TestPaymentHappy(t *testing.T) {
 	stages := role[A].EnableStages()
 	role[B].SetStages(stages)
 
+	app := chtest.NewRandomApp(rng, chtest.WithBackend(test.BackendID))
 	execConfig := &clienttest.AliceBobExecConfig{
 		BaseExecConfig: clienttest.MakeBaseExecConfig(
 			[2]map[perunwallet.BackendID]wire.Address{wire.AddressMapfromAccountMap(setup[A].Identity), wire.AddressMapfromAccountMap(setup[B].Identity)},
 			s.Asset,
 			test.BackendID,
 			[2]*big.Int{big.NewInt(100), big.NewInt(100)},
-			client.WithApp(chtest.NewRandomAppAndData(rng, chtest.WithBackend(test.BackendID))),
+			client.WithApp(app, pchannel.NewMockOp(pchannel.OpValid)),
 		),
 		NumPayments: [2]int{2, 2},
 		TxAmounts:   [2]*big.Int{big.NewInt(5), big.NewInt(3)},
@@ -108,6 +113,9 @@ func TestPaymentHappy(t *testing.T) {
 }
 
 func TestPaymentDispute(t *testing.T) {
+	release := acquireHeavySimTestSlot(t)
+	defer release()
+
 	log.Info("Starting dispute test")
 	rng := pkgtest.Prng(t)
 

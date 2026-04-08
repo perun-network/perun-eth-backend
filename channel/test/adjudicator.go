@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -43,13 +44,26 @@ const adjudicatorGasLimit = uint64(1000000)
 // NewSimAdjudicator returns a new SimAdjudicator for the given backend. The
 // backend must be a SimulatedBackend or it panics.
 func NewSimAdjudicator(backend ethchannel.ContractBackend, contract common.Address, receiver common.Address, acc accounts.Account) *SimAdjudicator {
-	sb, ok := backend.ContractInterface.(*SimulatedBackend)
+	sb, ok := unwrapSimulatedBackend(backend.ContractInterface)
 	if !ok {
 		panic("SimAdjudicator can only be created with a SimulatedBackend.")
 	}
 	return &SimAdjudicator{
 		Adjudicator: *ethchannel.NewAdjudicator(backend, contract, receiver, acc, adjudicatorGasLimit),
 		sb:          sb,
+	}
+}
+
+func unwrapSimulatedBackend(backend ethchannel.ContractInterface) (*SimulatedBackend, bool) {
+	for {
+		switch b := backend.(type) {
+		case *SimulatedBackend:
+			return b, true
+		case *ethchannel.ContractBackend:
+			backend = b.ContractInterface
+		default:
+			return nil, false
+		}
 	}
 }
 
@@ -137,9 +151,14 @@ func (t *SimTimeout) Wait(ctx context.Context) error {
 
 	if d := t.timeLeft(ctx); d > 0 {
 		if err := t.sb.AdjustTime(time.Duration(d) * time.Second); err != nil {
+			if strings.Contains(err.Error(), "non-empty block") {
+				t.sb.Commit()
+				if err = t.sb.AdjustTime(time.Duration(d) * time.Second); err == nil {
+					return nil
+				}
+			}
 			return errors.Wrap(err, "adjusting time")
 		}
-		t.sb.Commit()
 	}
 	return nil
 }

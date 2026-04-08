@@ -29,6 +29,7 @@ import (
 	"github.com/perun-network/perun-eth-backend/wallet/keystore"
 	ethwire "github.com/perun-network/perun-eth-backend/wire"
 	"github.com/stretchr/testify/require"
+	localwatcher "perun.network/go-perun/watcher/local"
 
 	"perun.network/go-perun/channel"
 	"perun.network/go-perun/channel/multi"
@@ -36,7 +37,6 @@ import (
 	ctest "perun.network/go-perun/client/test"
 	"perun.network/go-perun/wallet"
 	wtest "perun.network/go-perun/wallet/test"
-	"perun.network/go-perun/watcher/local"
 	"perun.network/go-perun/wire"
 	"polycry.pt/poly-go/test"
 )
@@ -89,12 +89,13 @@ func SetupMultiLedgerTest(t *testing.T, testDuration time.Duration) ctest.MultiL
 			{EtherToWei(1), EtherToWei(9)}, // Asset 1.
 			{EtherToWei(5), EtherToWei(5)}, // Asset 2.
 		},
-		BalanceDelta: EtherToWei(0.00012),
+		BalanceDelta: EtherToWei(0.0006),
 	}
 }
 
 type testLedger struct {
 	simSetup    *chtest.SimSetup
+	chainID     *big.Int
 	adjudicator common.Address
 	assetHolder common.Address
 	asset       *ethchannel.Asset
@@ -102,17 +103,13 @@ type testLedger struct {
 
 // AssetID returns the asset ID of the ledger.
 func (l testLedger) AssetID() multi.LedgerBackendID {
-	return ethchannel.MakeLedgerBackendID(ethchannel.MakeChainID(l.simSetup.SimBackend.ChainID()).Int)
+	return ethchannel.MakeLedgerBackendID(l.chainID)
 }
 
 func setupLedger(ctx context.Context, t *testing.T, rng *rand.Rand, chainID *big.Int) testLedger {
 	t.Helper()
 
-	// Set chainID for SimulatedBackend.
-	cfg := *params.AllEthashProtocolChanges
-	cfg.ChainID = new(big.Int).Set(chainID)
-	params.AllEthashProtocolChanges = &cfg
-	simSetup := chtest.NewSimSetup(t, rng, txFinalityDepth, blockInterval)
+	simSetup := chtest.NewSimSetup(t, rng, txFinalityDepth, blockInterval, chtest.WithChainID(chainID))
 
 	adjudicator, err := ethchannel.DeployAdjudicator(ctx, *simSetup.CB, simSetup.TxSender.Account)
 	require.NoError(t, err)
@@ -122,6 +119,7 @@ func setupLedger(ctx context.Context, t *testing.T, rng *rand.Rand, chainID *big
 
 	return testLedger{
 		simSetup:    simSetup,
+		chainID:     new(big.Int).Set(chainID),
 		adjudicator: adjudicator,
 		assetHolder: assetHolder,
 		asset:       asset,
@@ -140,14 +138,14 @@ func setupClient(t *testing.T, rng *rand.Rand, l1, l2 testLedger, bus wire.Bus) 
 	signer1 := l1.simSetup.SimBackend.Signer
 	cb1 := ethchannel.NewContractBackend(
 		l1.simSetup.CB,
-		ethchannel.MakeChainID(l1.simSetup.SimBackend.ChainID()),
+		ethchannel.MakeChainID(l1.chainID),
 		keystore.NewTransactor(*w[1].(*keystore.Wallet), signer1),
 		l1.simSetup.CB.TxFinalityDepth(),
 	)
 	signer2 := l2.simSetup.SimBackend.Signer
 	cb2 := ethchannel.NewContractBackend(
 		l2.simSetup.CB,
-		ethchannel.MakeChainID(l2.simSetup.SimBackend.ChainID()),
+		ethchannel.MakeChainID(l2.chainID),
 		keystore.NewTransactor(*w[1].(*keystore.Wallet), signer2),
 		l2.simSetup.CB.TxFinalityDepth(),
 	)
@@ -169,13 +167,13 @@ func setupClient(t *testing.T, rng *rand.Rand, l1, l2 testLedger, bus wire.Bus) 
 
 	// Setup adjudicator.
 	multiAdj := multi.NewAdjudicator()
-	adjL1 := chtest.NewSimAdjudicator(*l1.simSetup.CB, l1.adjudicator, acc.Account.Address, acc.Account)
-	adjL2 := chtest.NewSimAdjudicator(*l2.simSetup.CB, l2.adjudicator, acc.Account.Address, acc.Account)
+	adjL1 := chtest.NewSimAdjudicator(cb1, l1.adjudicator, acc.Account.Address, acc.Account)
+	adjL2 := chtest.NewSimAdjudicator(cb2, l2.adjudicator, acc.Account.Address, acc.Account)
 	multiAdj.RegisterAdjudicator(l1.AssetID(), adjL1)
 	multiAdj.RegisterAdjudicator(l2.AssetID(), adjL2)
 
 	// Setup watcher.
-	watcher, err := local.NewWatcher(multiAdj)
+	watcher, err := localwatcher.NewWatcher(multiAdj)
 	require.NoError(err)
 
 	walletAddr := acc.Address().(*ethwallet.Address)

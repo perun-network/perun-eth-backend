@@ -16,6 +16,8 @@ package subscription
 
 import (
 	"context"
+	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -63,22 +65,29 @@ type (
 // `pastBlocks` can be used to define how many blocks into the past the sub
 // should query.
 func NewEventSub(ctx context.Context, chain ethereum.ChainReader, contract *bind.BoundContract, eFact EventFactory, pastBlocks uint64) (*EventSub, error) {
-	// Get start block number.
 	startBlock, err := calcStartBlock(ctx, chain, pastBlocks)
 	if err != nil {
 		return nil, errors.WithMessage(err, "calculating starting block number")
 	}
-	// Watch for future events.
+	endBlock, err := latestBlockNumber(ctx, chain)
+	if err != nil {
+		return nil, errors.WithMessage(err, "calculating ending block number")
+	}
+	// Split the subscription into a stable historical range and a live range.
+	// Using endBlock+1 for the live watch avoids replaying the historical logs
+	// through the watch stream, which can otherwise delay or starve fresh
+	// events behind duplicates under heavier test load.
+	watchStart := endBlock + 1
 	event := eFact()
-	watchOpts := &bind.WatchOpts{Start: &startBlock}
+	watchOpts := &bind.WatchOpts{Start: &watchStart}
 	watchLogs, watchSub, err := contract.WatchLogs(watchOpts, event.Name, event.Filter...)
 	if err != nil {
 		err = cherrors.CheckIsChainNotReachableError(err)
 		return nil, errors.WithMessage(err, "watching logs")
 	}
 	// Read past events.
-	filterOpts := &bind.FilterOpts{Start: startBlock}
-	filterLogs, filterSub, err := contract.FilterLogs(filterOpts, event.Name, event.Filter...)
+	filterOpts := &bind.FilterOpts{Start: startBlock, End: &endBlock}
+	filterLogs, filterSub, err := filterLogsWithRetry(ctx, contract, filterOpts, event.Name, event.Filter...)
 	if err != nil {
 		watchSub.Unsubscribe()
 		err = cherrors.CheckIsChainNotReachableError(err)
@@ -100,16 +109,48 @@ func NewEventSub(ctx context.Context, chain ethereum.ChainReader, contract *bind
 	return ret, nil
 }
 
-func calcStartBlock(ctx context.Context, chain ethereum.ChainReader, pastBlocks uint64) (uint64, error) {
+func filterLogsWithRetry(ctx context.Context, contract *bind.BoundContract, opts *bind.FilterOpts, name string, query ...[]interface{}) (chan types.Log, event.Subscription, error) {
+	const (
+		maxAttempts = 5
+		retryDelay  = 20 * time.Millisecond
+	)
+	var (
+		logs chan types.Log
+		sub  event.Subscription
+		err  error
+	)
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		logs, sub, err = contract.FilterLogs(opts, name, query...)
+		if err == nil || !strings.Contains(err.Error(), "failed to retrieve log value pointer") || attempt == maxAttempts {
+			return logs, sub, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		case <-time.After(retryDelay):
+		}
+	}
+	return logs, sub, err
+}
+
+func latestBlockNumber(ctx context.Context, chain ethereum.ChainReader) (uint64, error) {
 	current, err := chain.HeaderByNumber(ctx, nil)
 	if err != nil {
 		err = cherrors.CheckIsChainNotReachableError(err)
 		return 0, errors.WithMessage(err, "retrieving latest block")
 	}
-	if current.Number.Uint64() <= pastBlocks {
+	return current.Number.Uint64(), nil
+}
+
+func calcStartBlock(ctx context.Context, chain ethereum.ChainReader, pastBlocks uint64) (uint64, error) {
+	endBlock, err := latestBlockNumber(ctx, chain)
+	if err != nil {
+		return 0, err
+	}
+	if endBlock <= pastBlocks {
 		return 1, nil
 	}
-	return current.Number.Uint64() - pastBlocks, nil
+	return endBlock - pastBlocks, nil
 }
 
 // Read reads all past and future events into `sink`.
@@ -144,6 +185,14 @@ func (s *EventSub) readPast(ctx context.Context, sink chan<- *Event) error {
 	// could be read.
 read1:
 	for {
+		select {
+		case <-s.closer.Closed():
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		select {
 		case log := <-s.filterLogs:
 			logs = append(logs, log)
@@ -184,6 +233,14 @@ read2:
 func (s *EventSub) readFuture(ctx context.Context, sink chan<- *Event) error {
 	for {
 		select {
+		case <-s.closer.Closed():
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		select {
 		case log := <-s.watchLogs:
 			if err := s.processLog(ctx, log, sink); err != nil {
 				return err
@@ -209,9 +266,17 @@ func (s *EventSub) processLog(ctx context.Context, log types.Log, sink chan<- *E
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case sink <- event:
-		return nil
 	case <-s.closer.Closed():
+		return nil
+	default:
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.closer.Closed():
+		return nil
+	case sink <- event:
 		return nil
 	}
 }

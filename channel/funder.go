@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"math/big"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -47,6 +48,11 @@ type assetHolder struct {
 	contract   *bind.BoundContract
 	assetIndex channel.Index
 }
+
+const (
+	fundingPollInterval     = 100 * time.Millisecond
+	fundingReconcileTimeout = 2 * time.Second
+)
 
 // Funder implements the channel.Funder interface for Ethereum.
 //
@@ -369,7 +375,7 @@ func (f *Funder) depositedSub(ctx context.Context, contract *bind.BoundContract,
 }
 
 func (f *Funder) subscribeDeposited(ctx context.Context, contract *bind.BoundContract, fundingIDs ...[32]byte) (chan *subscription.Event, *subscription.ResistantEventSub, chan error, error) {
-	deposited := make(chan *subscription.Event)
+	deposited := make(chan *subscription.Event, funderEventBufSize)
 	subErr := make(chan error, 1)
 	// Subscribe to events.
 	sub, err := f.depositedSub(ctx, contract, fundingIDs...)
@@ -403,6 +409,8 @@ func (f *Funder) waitForFundingConfirmation(ctx context.Context, request channel
 		return errors.WithMessage(err, "subscribing to deposited event")
 	}
 	defer sub.Close()
+	poll := time.NewTicker(fundingPollInterval)
+	defer poll.Stop()
 
 	// Wait until funding complete.
 	remaining := request.Agreement.Clone()[asset.assetIndex]
@@ -413,7 +421,17 @@ func (f *Funder) waitForFundingConfirmation(ctx context.Context, request channel
 loop:
 	for {
 		select {
-		case rawEvent := <-deposited:
+		case rawEvent, ok := <-deposited:
+			if !ok {
+				select {
+				case <-ctx.Done():
+					return f.resolveFundingWaitError(ctx, request.Agreement[asset.assetIndex], asset, fundingIDs, fundingTimeoutError(remaining, asset))
+				case err := <-subErr:
+					return f.resolveFundingWaitError(ctx, request.Agreement[asset.assetIndex], asset, fundingIDs, err)
+				default:
+					return f.resolveFundingWaitError(ctx, request.Agreement[asset.assetIndex], asset, fundingIDs, errors.New("deposited subscription closed unexpectedly"))
+				}
+			}
 			event, ok := rawEvent.Data.(*assetholder.AssetholderDeposited)
 			if !ok {
 				log.Panic("wrong event type")
@@ -432,15 +450,25 @@ loop:
 				break loop
 			}
 		case <-ctx.Done():
-			return fundingTimeoutError(remaining, asset)
+			return f.resolveFundingWaitError(ctx, request.Agreement[asset.assetIndex], asset, fundingIDs, fundingTimeoutError(remaining, asset))
 		case err := <-subErr:
 			// Resolve race between ctx and subErr, as ctx fires both events.
 			select {
 			case <-ctx.Done():
-				return fundingTimeoutError(remaining, asset)
+				return f.resolveFundingWaitError(ctx, request.Agreement[asset.assetIndex], asset, fundingIDs, fundingTimeoutError(remaining, asset))
 			default:
 			}
-			return err
+			return f.resolveFundingWaitError(ctx, request.Agreement[asset.assetIndex], asset, fundingIDs, err)
+		case <-poll.C:
+			reconciledRemaining, err := f.remainingFundingOnChain(ctx, request.Agreement[asset.assetIndex], asset, fundingIDs)
+			if err != nil {
+				continue
+			}
+			remaining = reconciledRemaining
+			remainingTotal := channel.Balances([][]*big.Int{remaining}).Sum()[0]
+			if remainingTotal.Cmp(big.NewInt(0)) <= 0 {
+				break loop
+			}
 		}
 	}
 	return nil
@@ -489,10 +517,22 @@ func (f *Funder) WaitForOthersFundingConfirmation(ctx context.Context, request c
 
 // waitForFundingEvents waits for the confirmation events and returns the updated balance.
 func (f *Funder) waitForFundingEvents(ctx context.Context, deposited <-chan *subscription.Event, subErr <-chan error, remainingOthers []*big.Int, totalBalanceForOther *big.Int, fundingIDs [][32]byte, request channel.FundingReq, asset assetHolder) (*big.Int, error) {
+	poll := time.NewTicker(fundingPollInterval)
+	defer poll.Stop()
 loop:
 	for {
 		select {
-		case rawEvent := <-deposited:
+		case rawEvent, ok := <-deposited:
+			if !ok {
+				select {
+				case <-ctx.Done():
+					return f.resolveFundingEventsWaitError(ctx, request, asset, fundingIDs, totalBalanceForOther, fundingTimeoutError(remainingOthers, asset))
+				case err := <-subErr:
+					return f.resolveFundingEventsWaitError(ctx, request, asset, fundingIDs, totalBalanceForOther, err)
+				default:
+					return f.resolveFundingEventsWaitError(ctx, request, asset, fundingIDs, totalBalanceForOther, errors.New("deposited subscription closed unexpectedly"))
+				}
+			}
 			event, ok := rawEvent.Data.(*assetholder.AssetholderDeposited)
 			if !ok {
 				log.Panic("wrong event type")
@@ -507,17 +547,106 @@ loop:
 				break loop
 			}
 		case <-ctx.Done():
-			return totalBalanceForOther, fundingTimeoutError(remainingOthers, asset)
+			return f.resolveFundingEventsWaitError(ctx, request, asset, fundingIDs, totalBalanceForOther, fundingTimeoutError(remainingOthers, asset))
 		case err := <-subErr:
 			select {
 			case <-ctx.Done():
-				return totalBalanceForOther, fundingTimeoutError(remainingOthers, asset)
+				return f.resolveFundingEventsWaitError(ctx, request, asset, fundingIDs, totalBalanceForOther, fundingTimeoutError(remainingOthers, asset))
 			default:
 			}
-			return totalBalanceForOther, err
+			return f.resolveFundingEventsWaitError(ctx, request, asset, fundingIDs, totalBalanceForOther, err)
+		case <-poll.C:
+			reconciledRemaining, err := f.remainingFundingOnChain(ctx, request.Agreement[asset.assetIndex], asset, fundingIDs)
+			if err != nil {
+				continue
+			}
+			reconciledOtherTotal := big.NewInt(0)
+			for i, bal := range reconciledRemaining {
+				if channel.Index(i) == request.Idx {
+					continue
+				}
+				reconciledOtherTotal.Add(reconciledOtherTotal, bal)
+			}
+			totalBalanceForOther = reconciledOtherTotal
+			if totalBalanceForOther.Cmp(big.NewInt(0)) <= 0 {
+				break loop
+			}
 		}
 	}
 	return totalBalanceForOther, nil
+}
+
+func (f *Funder) resolveFundingWaitError(ctx context.Context, expected []channel.Bal, asset assetHolder, fundingIDs [][32]byte, waitErr error) error {
+	reconcileCtx, cancel := fundingReconcileContext(ctx)
+	defer cancel()
+
+	remaining, err := f.remainingFundingOnChain(reconcileCtx, expected, asset, fundingIDs)
+	if err != nil {
+		if waitErr == nil {
+			return err
+		}
+		return errors.WithMessagef(waitErr, "reconciling on-chain funding: %v", err)
+	}
+	reconciledErr := fundingTimeoutError(remaining, asset)
+	if reconciledErr == nil {
+		return nil
+	}
+	return reconciledErr
+}
+
+func (f *Funder) resolveFundingEventsWaitError(ctx context.Context, request channel.FundingReq, asset assetHolder, fundingIDs [][32]byte, totalBalanceForOther *big.Int, waitErr error) (*big.Int, error) {
+	reconcileCtx, cancel := fundingReconcileContext(ctx)
+	defer cancel()
+
+	remaining, err := f.remainingFundingOnChain(reconcileCtx, request.Agreement[asset.assetIndex], asset, fundingIDs)
+	if err != nil {
+		if waitErr == nil {
+			return totalBalanceForOther, err
+		}
+		return totalBalanceForOther, errors.WithMessagef(waitErr, "reconciling on-chain funding: %v", err)
+	}
+	remainingOtherTotal := big.NewInt(0)
+	for i, bal := range remaining {
+		if channel.Index(i) == request.Idx {
+			continue
+		}
+		remainingOtherTotal.Add(remainingOtherTotal, bal)
+	}
+	if remainingOtherTotal.Sign() == 0 {
+		return remainingOtherTotal, nil
+	}
+	reconciledErr := fundingTimeoutError(remaining, asset)
+	if reconciledErr == nil {
+		if waitErr == nil {
+			return remainingOtherTotal, nil
+		}
+		return remainingOtherTotal, waitErr
+	}
+	return remainingOtherTotal, reconciledErr
+}
+
+func fundingReconcileContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), fundingReconcileTimeout)
+}
+
+func (f *Funder) remainingFundingOnChain(ctx context.Context, expected []channel.Bal, asset assetHolder, fundingIDs [][32]byte) ([]channel.Bal, error) {
+	callOpts := &bind.CallOpts{Context: ctx}
+	remaining := make([]channel.Bal, len(expected))
+	for i, expectedBal := range expected {
+		remaining[i] = big.NewInt(0)
+		if expectedBal == nil || expectedBal.Sign() <= 0 {
+			continue
+		}
+		holding, err := asset.Assetholder.Holdings(callOpts, fundingIDs[i])
+		if err != nil {
+			return nil, errors.WithMessagef(err, "getting holdings for asset %d, peer %d", asset.assetIndex, i)
+		}
+		missing := new(big.Int).Sub(new(big.Int).Set(expectedBal), holding)
+		if missing.Sign() > 0 {
+			remaining[i] = missing
+		}
+	}
+	return remaining, nil
 }
 
 func fundingTimeoutError(remaining []channel.Bal, asset assetHolder) error {

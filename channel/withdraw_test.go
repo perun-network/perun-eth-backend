@@ -17,7 +17,6 @@ package channel_test
 import (
 	"context"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
@@ -50,12 +49,15 @@ func TestAdjudicator_MultipleWithdraws_FinalState(t *testing.T) {
 
 func withdrawMultipleConcurrentFinal(t *testing.T, numParts int, parallel bool) {
 	t.Helper()
+	release := acquireHeavySimTestSlot()
+	defer release()
 	rng := pkgtest.Prng(t)
 	// create test setup
 	s := test.NewSetup(t, rng, numParts, blockInterval, TxFinalityDepth)
 	// create valid state and params
 	params, state := channeltest.NewRandomParamsAndState(
 		rng,
+		channeltest.WithChallengeDuration(uint64(numParts)*40000),
 		channeltest.WithParts(s.Parts),
 		channeltest.WithAssets(s.Asset),
 		channeltest.WithBackend(test.BackendID),
@@ -63,7 +65,7 @@ func withdrawMultipleConcurrentFinal(t *testing.T, numParts int, parallel bool) 
 		channeltest.WithLedgerChannel(true),
 	)
 	// we need to properly fund the channel
-	fundingCtx, funCancel := context.WithTimeout(context.Background(), defaultTxTimeout*time.Duration(numParts))
+	fundingCtx, funCancel := context.WithTimeout(context.Background(), 4*defaultTxTimeout*time.Duration(numParts))
 	defer funCancel()
 	// fund the contract
 	ct := pkgtest.NewConcurrent(t)
@@ -82,16 +84,15 @@ func withdrawMultipleConcurrentFinal(t *testing.T, numParts int, parallel bool) 
 	tx := testSignState(t, s.Accs, state)
 
 	// Now test the withdraw function
-	ctx, cancel := context.WithTimeout(context.Background(), defaultTxTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*defaultTxTimeout*time.Duration(numParts))
 	defer cancel()
 	if parallel {
 		startBarrier := make(chan struct{})
-		var wg sync.WaitGroup
-		wg.Add(numParts)
+		withdrawCT := pkgtest.NewConcurrent(t)
 		for i := 0; i < numParts; i++ {
 			sleepDuration := time.Duration(rng.Int63n(10)+1) * time.Millisecond
-			go func(i int) {
-				defer wg.Done()
+			i := i
+			go withdrawCT.StageN("withdraw loop", numParts, func(rt pkgtest.ConcT) {
 				<-startBarrier
 				time.Sleep(sleepDuration)
 				req := channel.AdjudicatorReq{
@@ -101,11 +102,11 @@ func withdrawMultipleConcurrentFinal(t *testing.T, numParts int, parallel bool) 
 					Tx:     tx,
 				}
 				err := s.Adjs[i].Withdraw(ctx, req, nil)
-				assert.NoError(t, err, "Withdrawing should succeed")
-			}(i)
+				assert.NoError(rt, err, "Withdrawing should succeed")
+			})
 		}
 		close(startBarrier)
-		wg.Wait()
+		withdrawCT.Wait("withdraw loop")
 	} else {
 		for i := 0; i < numParts; i++ {
 			req := channel.AdjudicatorReq{
@@ -136,6 +137,7 @@ func testWithdrawZeroBalance(t *testing.T, n int) {
 	// create valid state and params
 	params, state := channeltest.NewRandomParamsAndState(
 		rng,
+		channeltest.WithChallengeDuration(uint64(n)*40000),
 		channeltest.WithBackend(test.BackendID),
 		channeltest.WithParts(s.Parts),
 		channeltest.WithAssets(s.Asset),
@@ -199,6 +201,7 @@ func TestWithdraw(t *testing.T) {
 	// create valid state and params
 	params, state := channeltest.NewRandomParamsAndState(
 		rng,
+		channeltest.WithChallengeDuration(40000),
 		channeltest.WithBackend(test.BackendID),
 		channeltest.WithParts(s.Parts),
 		channeltest.WithAssets(s.Asset),

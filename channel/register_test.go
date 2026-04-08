@@ -17,7 +17,6 @@ package channel_test
 import (
 	"context"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
@@ -49,13 +48,15 @@ func TestAdjudicator_MultipleRegisters(t *testing.T) {
 
 func registerMultiple(t *testing.T, numParts int, parallel bool) {
 	t.Helper()
+	release := acquireHeavySimTestSlot()
+	defer release()
 	rng := pkgtest.Prng(t)
 	// create test setup
 	s := test.NewSetup(t, rng, numParts, blockInterval, TxFinalityDepth)
 	// create valid state and params
 	params, state := channeltest.NewRandomParamsAndState(
 		rng,
-		channeltest.WithChallengeDuration(uint64(100*time.Second)),
+		channeltest.WithChallengeDuration(uint64(numParts)*40000),
 		channeltest.WithBackend(test.BackendID),
 		channeltest.WithParts(s.Parts),
 		channeltest.WithAssets(s.Asset),
@@ -65,7 +66,7 @@ func registerMultiple(t *testing.T, numParts int, parallel bool) {
 	)
 
 	// we need to properly fund the channel
-	fundingCtx, funCancel := context.WithTimeout(context.Background(), defaultTxTimeout*time.Duration(numParts))
+	fundingCtx, funCancel := context.WithTimeout(context.Background(), 4*defaultTxTimeout*time.Duration(numParts))
 	defer funCancel()
 	// fund the contract
 	ct := pkgtest.NewConcurrent(t)
@@ -81,13 +82,10 @@ func registerMultiple(t *testing.T, numParts int, parallel bool) {
 	ct.Wait("funding loop")
 
 	// Now test the register function
-	ctx, cancel := context.WithTimeout(context.Background(), defaultTxTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*defaultTxTimeout*time.Duration(numParts))
 	defer cancel()
-	var wg sync.WaitGroup
 	startBarrier := make(chan struct{})
-	if parallel {
-		wg.Add(numParts)
-	}
+	regCT := pkgtest.NewConcurrent(t)
 
 	txs := make([]*channel.Transaction, numParts)
 	subs := make([]channel.AdjudicatorSubscription, numParts)
@@ -99,7 +97,6 @@ func registerMultiple(t *testing.T, numParts int, parallel bool) {
 		sleepDuration := time.Duration(rng.Int63n(10)+1) * time.Millisecond
 		reg := func(i int, tx channel.Transaction) {
 			if parallel {
-				defer wg.Done()
 				<-startBarrier
 				time.Sleep(sleepDuration)
 			}
@@ -119,7 +116,9 @@ func registerMultiple(t *testing.T, numParts int, parallel bool) {
 			require.True(t, err == nil || ethchannel.IsErrTxFailed(err), "Registering peer %d", i)
 		}
 		if parallel {
-			go reg(i, tx)
+			go regCT.StageN("register loop", numParts, func(rt pkgtest.ConcT) {
+				reg(i, tx)
+			})
 		} else {
 			reg(i, tx)
 		}
@@ -127,7 +126,7 @@ func registerMultiple(t *testing.T, numParts int, parallel bool) {
 
 	if parallel {
 		close(startBarrier)
-		wg.Wait()
+		regCT.Wait("register loop")
 	}
 
 	time.Sleep(100 * time.Millisecond) // Give the subscriptions time to receive the latest event.
@@ -212,11 +211,6 @@ func TestRegister_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTxTimeout)
 	// directly cancel timeout
 	cancel()
-	// create subscription
-	adj := s.Adjs[0]
-	sub, err := adj.Subscribe(ctx, params.ID())
-	require.NoError(t, err)
-	defer sub.Close()
 	// register
 	tx := testSignState(t, s.Accs, state)
 	req := channel.AdjudicatorReq{
@@ -225,5 +219,5 @@ func TestRegister_CancelledContext(t *testing.T) {
 		Idx:    channel.Index(0),
 		Tx:     tx,
 	}
-	assert.Error(t, adj.Register(ctx, req, nil), "Registering with canceled context should error")
+	assert.Error(t, s.Adjs[0].Register(ctx, req, nil), "Registering with canceled context should error")
 }

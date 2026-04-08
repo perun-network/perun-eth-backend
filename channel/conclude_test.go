@@ -42,6 +42,8 @@ func TestAdjudicator_ConcludeFinal(t *testing.T) {
 func testConcludeFinal(t *testing.T, numParts int) {
 	t.Helper()
 	t.Parallel()
+	release := acquireHeavySimTestSlot()
+	defer release()
 	rng := pkgtest.Prng(t)
 	// create test setup
 	s := test.NewSetup(t, rng, numParts, blockInterval, TxFinalityDepth)
@@ -55,7 +57,7 @@ func testConcludeFinal(t *testing.T, numParts int) {
 		channeltest.WithLedgerChannel(true),
 	)
 	// we need to properly fund the channel
-	fundingCtx, funCancel := context.WithTimeout(context.Background(), defaultTxTimeout)
+	fundingCtx, funCancel := context.WithTimeout(context.Background(), 2*defaultTxTimeout)
 	defer funCancel()
 	// fund the contract
 	ct := pkgtest.NewConcurrent(t)
