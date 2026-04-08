@@ -49,7 +49,7 @@ func TestAdjudicator_MultipleWithdraws_FinalState(t *testing.T) {
 
 func withdrawMultipleConcurrentFinal(t *testing.T, numParts int, parallel bool) {
 	t.Helper()
-	release := acquireHeavySimTestSlot()
+	release := acquireHeavySimTestSlot(t)
 	defer release()
 	rng := pkgtest.Prng(t)
 	// create test setup
@@ -57,7 +57,7 @@ func withdrawMultipleConcurrentFinal(t *testing.T, numParts int, parallel bool) 
 	// create valid state and params
 	params, state := channeltest.NewRandomParamsAndState(
 		rng,
-		channeltest.WithChallengeDuration(uint64(numParts)*40000),
+		channeltest.WithChallengeDuration(uint64(numParts)*challengeDurationPerParticipant),
 		channeltest.WithParts(s.Parts),
 		channeltest.WithAssets(s.Asset),
 		channeltest.WithBackend(test.BackendID),
@@ -137,7 +137,7 @@ func testWithdrawZeroBalance(t *testing.T, n int) {
 	// create valid state and params
 	params, state := channeltest.NewRandomParamsAndState(
 		rng,
-		channeltest.WithChallengeDuration(uint64(n)*40000),
+		channeltest.WithChallengeDuration(uint64(n)*challengeDurationPerParticipant),
 		channeltest.WithBackend(test.BackendID),
 		channeltest.WithParts(s.Parts),
 		channeltest.WithAssets(s.Asset),
@@ -201,7 +201,7 @@ func TestWithdraw(t *testing.T) {
 	// create valid state and params
 	params, state := channeltest.NewRandomParamsAndState(
 		rng,
-		channeltest.WithChallengeDuration(40000),
+		channeltest.WithChallengeDuration(challengeDurationPerParticipant),
 		channeltest.WithBackend(test.BackendID),
 		channeltest.WithParts(s.Parts),
 		channeltest.WithAssets(s.Asset),

@@ -48,7 +48,7 @@ func TestAdjudicator_MultipleRegisters(t *testing.T) {
 
 func registerMultiple(t *testing.T, numParts int, parallel bool) {
 	t.Helper()
-	release := acquireHeavySimTestSlot()
+	release := acquireHeavySimTestSlot(t)
 	defer release()
 	rng := pkgtest.Prng(t)
 	// create test setup
@@ -56,7 +56,7 @@ func registerMultiple(t *testing.T, numParts int, parallel bool) {
 	// create valid state and params
 	params, state := channeltest.NewRandomParamsAndState(
 		rng,
-		channeltest.WithChallengeDuration(uint64(numParts)*40000),
+		channeltest.WithChallengeDuration(uint64(numParts)*challengeDurationPerParticipant),
 		channeltest.WithBackend(test.BackendID),
 		channeltest.WithParts(s.Parts),
 		channeltest.WithAssets(s.Asset),

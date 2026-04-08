@@ -61,6 +61,8 @@ type (
 	Filter [][]interface{}
 )
 
+const transientFilterLogsErr = "failed to retrieve log value pointer"
+
 // NewEventSub creates a new `EventSub`. Should always be closed with `Close`.
 // `pastBlocks` can be used to define how many blocks into the past the sub
 // should query.
@@ -121,7 +123,10 @@ func filterLogsWithRetry(ctx context.Context, contract *bind.BoundContract, opts
 	)
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		logs, sub, err = contract.FilterLogs(opts, name, query...)
-		if err == nil || !strings.Contains(err.Error(), "failed to retrieve log value pointer") || attempt == maxAttempts {
+		// Geth v1.17.x can transiently return this internal error while filtering
+		// logs around freshly mined blocks. Keep the version-coupled retry localized
+		// here until geth exposes a typed error.
+		if err == nil || !strings.Contains(err.Error(), transientFilterLogsErr) || attempt == maxAttempts {
 			return logs, sub, err
 		}
 		select {

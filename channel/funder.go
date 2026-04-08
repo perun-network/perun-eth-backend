@@ -631,6 +631,8 @@ func fundingReconcileContext(ctx context.Context) (context.Context, context.Canc
 
 func (f *Funder) remainingFundingOnChain(ctx context.Context, expected []channel.Bal, asset assetHolder, fundingIDs [][32]byte) ([]channel.Bal, error) {
 	callOpts := &bind.CallOpts{Context: ctx}
+	// Callers rely on every entry being non-nil so they can inspect Sign() without
+	// additional guards, even when the expected balance is zero.
 	remaining := make([]channel.Bal, len(expected))
 	for i, expectedBal := range expected {
 		remaining[i] = big.NewInt(0)

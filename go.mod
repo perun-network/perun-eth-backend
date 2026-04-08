@@ -1,6 +1,6 @@
 module github.com/perun-network/perun-eth-backend
 
-go 1.24.0
+go 1.24
 
 require (
 	github.com/ethereum/go-ethereum v1.17.2
@@ -9,7 +9,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/sync v0.18.0
-	perun.network/go-perun v0.12.1-0.20250128081648-21d0af4e234b
+	perun.network/go-perun v0.15.1-0.20260408121133-2daea3fa699a
 	polycry.pt/poly-go v0.0.0-20220301085937-fb9d71b45a37
 )
 

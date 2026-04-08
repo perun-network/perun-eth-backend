@@ -170,7 +170,7 @@ func testFunderCrossOverFunding(t *testing.T, n int) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTxTimeout*time.Duration(n))
 	defer cancel()
 	rng := pkgtest.Prng(t, n)
-	ct := pkgtest.NewConcurrent(t)
+	ct := pkgtest.NewConcurrentCtx(ctx, t)
 	parts, funders, params, alloc := newNFunders(ctx, t, rng, n)
 
 	// Shuffle the balances.
@@ -343,7 +343,7 @@ func TestFunder_PeerTimeout(t *testing.T) {
 func testFundingTimeout(t *testing.T, faultyPeer, n int) {
 	t.Helper()
 	t.Parallel()
-	release := acquireHeavySimTestSlot()
+	release := acquireHeavySimTestSlot(t)
 	defer release()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*defaultTxTimeout*time.Duration(n))
 	defer cancel()
@@ -406,7 +406,7 @@ func TestFunder_Fund_multi(t *testing.T) {
 func testFunderFunding(t *testing.T, n int) {
 	t.Helper()
 	t.Parallel()
-	release := acquireHeavySimTestSlot()
+	release := acquireHeavySimTestSlot(t)
 	defer release()
 	// Larger funding scenarios can run close to the default deadline when the
 	// package test suite is under heavy parallel load.
@@ -500,7 +500,7 @@ func newNFunders(
 	params = channeltest.NewRandomParams(
 		rng,
 		channeltest.WithParts(parts),
-		channeltest.WithChallengeDuration(uint64(n)*40000),
+		channeltest.WithChallengeDuration(uint64(n)*challengeDurationPerParticipant),
 		channeltest.WithBackend(ethwallet.BackendID),
 	)
 	allocation = channeltest.NewRandomAllocation(

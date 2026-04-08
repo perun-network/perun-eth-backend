@@ -229,7 +229,12 @@ func (s *ResistantEventSub) processHead(ctx context.Context, head *types.Header,
 	s.lastBlockNum.Set(head.Number)
 
 	for _, event := range s.events {
-		if !s.isCanonical(ctx, event) {
+		canonical, err := s.isCanonical(ctx, event)
+		if err != nil {
+			log.WithError(err).WithField("hash", event.Log.TxHash.Hex()).Warn("Skipping canonicality check until next head")
+			continue
+		}
+		if !canonical {
 			delete(s.events, event.Log.TxHash)
 			continue
 		}
@@ -240,12 +245,15 @@ func (s *ResistantEventSub) processHead(ctx context.Context, head *types.Header,
 	}
 }
 
-func (s *ResistantEventSub) isCanonical(ctx context.Context, event *Event) bool {
+func (s *ResistantEventSub) isCanonical(ctx context.Context, event *Event) (bool, error) {
 	header, err := s.cr.HeaderByNumber(ctx, new(big.Int).SetUint64(event.Log.BlockNumber))
-	if err != nil || header == nil {
-		return false
+	if err != nil {
+		return false, err
 	}
-	return header.Hash() == event.Log.BlockHash
+	if header == nil {
+		return false, errors.New("canonical header not found")
+	}
+	return header.Hash() == event.Log.BlockHash, nil
 }
 
 func (s *ResistantEventSub) isFinal(event *Event) bool {

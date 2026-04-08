@@ -47,7 +47,9 @@ func (a *Adjudicator) Subscribe(ctx context.Context, chID channel.ID) (channel.A
 	if err != nil {
 		return nil, errors.WithMessage(err, "creating filter-watch event subscription")
 	}
-	// Find new events
+	// The resistant event subscription already replays past events before it
+	// streams future ones, and RegisteredSub keeps only the newest matching event
+	// for the caller.
 	go func() {
 		subErr <- sub.Read(ctx, events)
 	}()

@@ -42,7 +42,7 @@ func TestAdjudicator_ConcludeFinal(t *testing.T) {
 func testConcludeFinal(t *testing.T, numParts int) {
 	t.Helper()
 	t.Parallel()
-	release := acquireHeavySimTestSlot()
+	release := acquireHeavySimTestSlot(t)
 	defer release()
 	rng := pkgtest.Prng(t)
 	// create test setup

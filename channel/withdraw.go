@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -46,11 +47,11 @@ func (a *Adjudicator) Withdraw(ctx context.Context, req channel.AdjudicatorReq, 
 	if err := a.checkConcludedState(ctx, req, subStates); err != nil {
 		return errors.WithMessage(err, "check concluded state")
 	}
-	return errors.WithMessage(a.ensureWithdrawn(ctx, req), "ensure Withdrawn")
+	return errors.WithMessage(a.ensureWithdrawn(ctx, req, subStates), "ensure Withdrawn")
 }
 
 // ensureWithdrawn ensures that the channel has been withdrawn from the asset.
-func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.AdjudicatorReq) error {
+func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.AdjudicatorReq, subStates channel.StateMap) error {
 	g, ctx := errgroup.WithContext(ctx)
 
 	for _, asset := range filterAssets(req.Tx.Allocation.Assets, a.chainID) {
@@ -76,18 +77,42 @@ func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.Adjudicat
 			}
 			defer sub.Close()
 
-			// Check for past event.
-			if err := sub.ReadPast(ctx, events); err != nil {
-				return errors.WithMessage(err, "reading past events")
-			}
-			select {
-			case <-events:
-				return nil
-			default:
-			}
-			// No withdrawn event found in the past, send transaction.
-			if err := a.callAssetWithdraw(ctx, req, contract); err != nil {
-				return errors.WithMessage(err, "withdrawing assets failed")
+			const maxWithdrawAttempts = 4
+			for attempt := 0; ; attempt++ {
+				// Check for past event.
+				if err := sub.ReadPast(ctx, events); err != nil {
+					return errors.WithMessage(err, "reading past events")
+				}
+				select {
+				case <-events:
+					return nil
+				default:
+				}
+				// No withdrawn event found in the past, send transaction.
+				if err := a.callAssetWithdraw(ctx, req, contract); err != nil {
+					// A concurrent conclude/settle path can make the asset holder
+					// reject the first withdraw attempt with a transient revert
+					// before the asset is marked settled. Only retry after
+					// re-ensuring conclusion while settlement is still pending.
+					if attempt >= maxWithdrawAttempts-1 || ctx.Err() != nil {
+						return errors.WithMessage(err, "withdrawing assets failed")
+					}
+					settled, settleErr := isAssetSettled(ctx, contract, req.Params.ID())
+					if settleErr != nil {
+						return errors.WithMessage(settleErr, "checking asset settlement")
+					}
+					if settled {
+						return errors.WithMessage(err, "withdrawing assets failed")
+					}
+					if err := a.ensureConcluded(ctx, req, subStates); err != nil {
+						return errors.WithMessage(err, "re-ensuring concluded state")
+					}
+					if err := waitNextHead(ctx, a.ContractBackend); err != nil {
+						return errors.WithMessage(err, "waiting for channel settlement")
+					}
+					continue
+				}
+				break
 			}
 
 			// Wait for event.
@@ -109,6 +134,38 @@ func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.Adjudicat
 		})
 	}
 	return g.Wait()
+}
+
+func isAssetSettled(ctx context.Context, contract assetHolder, channelID channel.ID) (bool, error) {
+	settled, err := contract.Assetholder.Settled(&bind.CallOpts{Context: ctx}, channelID)
+	if err != nil {
+		err = cherrors.CheckIsChainNotReachableError(err)
+		return false, err
+	}
+	return settled, nil
+}
+
+func waitNextHead(ctx context.Context, cr ethereum.ChainReader) error {
+	heads := make(chan *types.Header, 1)
+	sub, err := cr.SubscribeNewHead(ctx, heads)
+	if err != nil {
+		err = cherrors.CheckIsChainNotReachableError(err)
+		return errors.WithMessage(err, "subscribing to new heads")
+	}
+	defer sub.Unsubscribe()
+
+	select {
+	case <-heads:
+		return nil
+	case err := <-sub.Err():
+		if err != nil {
+			err = cherrors.CheckIsChainNotReachableError(err)
+			return errors.WithMessage(err, "head subscription")
+		}
+		return errors.New("head subscription closed")
+	case <-ctx.Done():
+		return errors.Wrap(ctx.Err(), "context cancelled")
+	}
 }
 
 func withdrawnEventType(fundingID [32]byte) subscription.EventFactory {

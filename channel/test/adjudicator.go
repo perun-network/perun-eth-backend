@@ -144,20 +144,29 @@ func (t *SimTimeout) IsElapsed(ctx context.Context) bool {
 // Wait advances the clock of the simulated blockchain past the timeout.
 // Access to the blockchain by different SimTimeouts is guarded by a shared mutex.
 func (t *SimTimeout) Wait(ctx context.Context) error {
+	const maxAdjustTimeAttempts = 10
+
 	if !t.sb.clockMu.TryLockCtx(ctx) {
 		return errors.New("clock mutex could not be locked")
 	}
 	defer t.sb.clockMu.Unlock()
 
 	if d := t.timeLeft(ctx); d > 0 {
-		if err := t.sb.AdjustTime(time.Duration(d) * time.Second); err != nil {
-			if strings.Contains(err.Error(), "non-empty block") {
-				t.sb.Commit()
-				if err = t.sb.AdjustTime(time.Duration(d) * time.Second); err == nil {
-					return nil
+		for attempt := 1; attempt <= maxAdjustTimeAttempts; attempt++ {
+			if err := t.sb.AdjustTime(time.Duration(d) * time.Second); err != nil {
+				if strings.Contains(err.Error(), "non-empty block") {
+					if attempt == maxAdjustTimeAttempts {
+						return errors.Wrap(err, "adjusting time after repeated non-empty blocks")
+					}
+					t.sb.Commit()
+					if ctx.Err() != nil {
+						return errors.Wrap(ctx.Err(), "context cancelled")
+					}
+					continue
 				}
+				return errors.Wrap(err, "adjusting time")
 			}
-			return errors.Wrap(err, "adjusting time")
+			return nil
 		}
 	}
 	return nil

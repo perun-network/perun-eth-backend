@@ -23,6 +23,8 @@ import (
 	plogrus "perun.network/go-perun/log/logrus"
 )
 
+// Client tests keep this at one because they spin up multiple long-lived
+// components on top of the simulated backend.
 var heavySimTestSlots = make(chan struct{}, 1)
 
 func acquireHeavySimTestSlot(t *testing.T) func() {

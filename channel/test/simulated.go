@@ -115,6 +115,8 @@ type simBackendConfig struct {
 
 func normalizeCtx(ctx context.Context) context.Context {
 	if ctx == nil {
+		// Keep older tests working even though callers should prefer explicit
+		// contexts so cancellation bugs are easier to spot.
 		return context.Background()
 	}
 	return ctx

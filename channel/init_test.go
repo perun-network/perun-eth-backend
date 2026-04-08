@@ -16,6 +16,7 @@ package channel_test
 
 import (
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -23,9 +24,14 @@ import (
 	plogrus "perun.network/go-perun/log/logrus"
 )
 
+// Channel tests can tolerate two concurrent simulated-backend heavy cases.
 var heavySimTestSlots = make(chan struct{}, 2)
 
-func acquireHeavySimTestSlot() func() {
+const challengeDurationPerParticipant = 40000
+
+func acquireHeavySimTestSlot(t *testing.T) func() {
+	t.Helper()
+
 	heavySimTestSlots <- struct{}{}
 	var once sync.Once
 	return func() {

@@ -158,6 +158,8 @@ func Test_ConfirmTransaction(t *testing.T) {
 	}()
 
 	// Create new blocks.
+	// The inclusion block counts as the first confirmation on the new backend,
+	// so only TxFinalityDepth-1 additional blocks are needed here.
 	for i := 0; i < int(TxFinalityDepth-1); i++ {
 		// Check that it is not yet confirmed.
 		select {
