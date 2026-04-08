@@ -1,6 +1,6 @@
 module github.com/perun-network/perun-eth-backend
 
-go 1.24
+go 1.24.0
 
 require (
 	github.com/ethereum/go-ethereum v1.17.2
