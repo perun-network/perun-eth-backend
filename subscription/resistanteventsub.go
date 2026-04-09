@@ -173,7 +173,7 @@ func (s *ResistantEventSub) ReadPast(_ctx context.Context, sink chan<- *Event) e
 		case event, ok := <-rawEvents:
 			if !ok {
 				s.drainHeadSub(ctx, sink)
-				return errors.WithMessage(<-subErr, "underlying EventSub.Read")
+				return errors.WithMessage(<-subErr, "underlying EventSub.ReadPast")
 			}
 			s.processEvent(event, sink)
 		case e := <-s.headSub.Err():
