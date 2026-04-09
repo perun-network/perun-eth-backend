@@ -55,8 +55,8 @@ func SetupMultiLedgerTest(t *testing.T, testDuration time.Duration) ctest.MultiL
 	ctx, cancel := context.WithTimeout(context.Background(), testDuration)
 	defer cancel()
 
-	l1 := setupLedger(ctx, t, rng, big.NewInt(1337)) //nolint:gomnd
-	l2 := setupLedger(ctx, t, rng, big.NewInt(1338)) //nolint:gomnd
+	l1 := setupLedger(ctx, t, rng, big.NewInt(1337)) //nolint:mnd
+	l2 := setupLedger(ctx, t, rng, big.NewInt(1338)) //nolint:mnd
 
 	// Setup message bus.
 	bus := wire.NewLocalBus()
@@ -71,7 +71,7 @@ func SetupMultiLedgerTest(t *testing.T, testDuration time.Duration) ctest.MultiL
 	l2.simSetup.SimBackend.FundAddress(ctx, ethwallet.AsEthAddr(c1.WalletAddress[ethwallet.BackendID]))
 	l2.simSetup.SimBackend.FundAddress(ctx, ethwallet.AsEthAddr(c2.WalletAddress[ethwallet.BackendID]))
 
-	//nolint:gomnd
+	//nolint:mnd
 	return ctest.MultiLedgerSetup{
 		Client1: c1,
 		Client2: c2,

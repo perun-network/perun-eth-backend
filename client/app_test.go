@@ -34,6 +34,8 @@ import (
 )
 
 func TestProgression(t *testing.T) {
+	t.Parallel()
+
 	release := acquireHeavySimTestSlot(t)
 	defer release()
 

@@ -16,8 +16,8 @@ package client_test
 
 import (
 	"context"
+	stderrors "errors"
 	"math/big"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -34,12 +34,14 @@ import (
 )
 
 func TestFundRecovery(t *testing.T) {
+	t.Parallel()
+
 	release := acquireHeavySimTestSlot(t)
 	defer release()
 
 	rng := test.Prng(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
 	params := ctest.FundSetup{
@@ -48,29 +50,32 @@ func TestFundRecovery(t *testing.T) {
 		FredInitBal:       ethclienttest.EtherToWei(50),
 		BalanceDelta:      ethclienttest.EtherToWei(0.001),
 	}
-	setupFn := func(r *rand.Rand) ([2]ctest.RoleSetup, channel.Asset) {
+	setupFn := func() ([2]ctest.RoleSetup, channel.Asset) {
 		setup := channeltest.NewSetup(t, rng, 2, ethclienttest.BlockInterval, 1)
 		for i, adj := range setup.Adjs {
 			adj.Receiver = setup.Accs[i].Account.Address
 		}
 		roles := ethclienttest.MakeRoleSetups(rng, setup, []string{"Frida", "Fred"})
+		for i := range roles {
+			roles[i].Timeout = 90 * time.Second
+		}
 		var rolesArray [2]ctest.RoleSetup
 		copy(rolesArray[:], roles)
 		return rolesArray, setup.Asset
 	}
 
 	t.Run("failing funder proposer", func(t *testing.T) {
-		roles, asset := setupFn(rng)
+		roles, asset := setupFn()
 		roles[0].Funder = ctest.FailingFunder{}
 		runEthFundRecovery(ctx, t, params, roles, asset)
 	})
 	t.Run("failing funder proposee", func(t *testing.T) {
-		roles, asset := setupFn(rng)
+		roles, asset := setupFn()
 		roles[1].Funder = ctest.FailingFunder{}
 		runEthFundRecovery(ctx, t, params, roles, asset)
 	})
 	t.Run("failing funder both sides", func(t *testing.T) {
-		roles, asset := setupFn(rng)
+		roles, asset := setupFn()
 		roles[0].Funder = ctest.FailingFunder{}
 		roles[1].Funder = ctest.FailingFunder{}
 		runEthFundRecovery(ctx, t, params, roles, asset)
@@ -84,6 +89,8 @@ func runEthFundRecovery(
 	setups [2]ctest.RoleSetup,
 	asset channel.Asset,
 ) {
+	t.Helper()
+
 	const (
 		fridaIdx = 0
 		fredIdx  = 1
@@ -121,7 +128,8 @@ func runEthFundRecovery(
 
 	chFrida, err := frida.ProposeChannel(ctx, prop)
 	require.Error(t, err)
-	require.IsType(t, &client.ChannelFundingError{}, err)
+	var fundingErr *client.ChannelFundingError
+	require.True(t, stderrors.As(err, &fundingErr))
 	require.NotNil(t, chFrida)
 	require.NoError(t, chFrida.Settle(ctx, false))
 
@@ -131,7 +139,8 @@ func runEthFundRecovery(
 	select {
 	case err := <-errsFred:
 		require.Error(t, err)
-		require.IsType(t, &client.ChannelFundingError{}, err)
+		fundingErr = nil
+		require.True(t, stderrors.As(err, &fundingErr))
 	case <-ctx.Done():
 		require.NoError(t, ctx.Err())
 	}

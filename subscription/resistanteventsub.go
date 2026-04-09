@@ -278,6 +278,6 @@ func (s *ResistantEventSub) isFinal(event *Event) bool {
 // Close closes the sub and the underlying `EventSub`.
 // Can be called more than once. Is thread safe.
 func (s *ResistantEventSub) Close() {
-	s.closer.Close() // Silently ignore repeated close calls, as it is allowed in this function's specification.
+	_ = s.closer.Close() // Silently ignore repeated close calls, as it is allowed in this function's specification.
 	// NOTE: The underlying `EventSub` is closed in the `OnCloseAlways` hook.
 }

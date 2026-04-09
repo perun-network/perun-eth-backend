@@ -33,6 +33,8 @@ import (
 )
 
 func TestSubChannelHappy(t *testing.T) {
+	t.Parallel()
+
 	release := acquireHeavySimTestSlot(t)
 	defer release()
 
@@ -84,6 +86,8 @@ func TestSubChannelHappy(t *testing.T) {
 }
 
 func TestSubChannelDispute(t *testing.T) {
+	t.Parallel()
+
 	release := acquireHeavySimTestSlot(t)
 	defer release()
 
@@ -92,6 +96,9 @@ func TestSubChannelDispute(t *testing.T) {
 	const A, B = 0, 1 // Indices of clients.
 	s := ethchanneltest.NewSetup(t, rng, 2, ethclienttest.BlockInterval, TxFinalityDepth)
 	setups := ethclienttest.MakeRoleSetups(rng, s, []string{"DisputeSusie", "DisputeTim"})
+	for i := range setups {
+		setups[i].Timeout = 4 * twoPartyTestTimeout
+	}
 	roles := [2]clienttest.Executer{
 		clienttest.NewDisputeSusie(t, setups[A]),
 		clienttest.NewDisputeTim(t, setups[B]),

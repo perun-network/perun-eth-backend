@@ -23,8 +23,9 @@ import (
 	plogrus "perun.network/go-perun/log/logrus"
 )
 
-// Client tests keep this at one because they spin up multiple long-lived
-// components on top of the simulated backend.
+// Client tests are expensive, and under the full race suite two concurrent
+// simulated setups still overload the runner enough to cause package-level
+// timeouts. Keep them serialized for stable CI runtimes.
 var heavySimTestSlots = make(chan struct{}, 1)
 
 func acquireHeavySimTestSlot(t *testing.T) func() {

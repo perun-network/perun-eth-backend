@@ -19,6 +19,7 @@ import (
 	"crypto/ecdsa"
 	"fmt"
 	"math/big"
+	stdsync "sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -68,6 +69,7 @@ type SimulatedBackend struct {
 	clockMu       sync.Mutex    // Mutex for clock adjustments. Locked by SimTimeouts.
 	mining        chan struct{} // Used for auto-mining blocks.
 	stoppedMining chan struct{} // For making sure that mining stopped.
+	stopMiningOnce stdsync.Once
 	commitTx      bool          // Whether each transaction is committed.
 }
 
@@ -228,6 +230,7 @@ func (s *SimulatedBackend) StartMining(interval time.Duration) {
 
 	s.mining = make(chan struct{})
 	s.stoppedMining = make(chan struct{})
+	s.stopMiningOnce = stdsync.Once{}
 	go func() {
 		log.Trace("Started mining")
 		defer log.Trace("Stopped mining")
@@ -250,8 +253,13 @@ func (s *SimulatedBackend) StartMining(interval time.Duration) {
 // Must be called exactly once to free resources iff `StartMining` was called.
 // Waits until the auto-mining routine terminates.
 func (s *SimulatedBackend) StopMining() {
-	close(s.mining)
-	<-s.stoppedMining
+	if s.mining == nil || s.stoppedMining == nil {
+		return
+	}
+	s.stopMiningOnce.Do(func() {
+		close(s.mining)
+		<-s.stoppedMining
+	})
 }
 
 // Reorg applies a chain reorg.
@@ -320,6 +328,7 @@ func (s *SimulatedBackend) Rollback() {
 
 // Close shuts down the simulated backend.
 func (s *SimulatedBackend) Close() error {
+	s.StopMining()
 	return s.backend.Close()
 }
 

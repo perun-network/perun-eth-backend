@@ -90,6 +90,12 @@ func registerMultiple(t *testing.T, numParts int, parallel bool) {
 	txs := make([]*channel.Transaction, numParts)
 	subs := make([]channel.AdjudicatorSubscription, numParts)
 	for i := 0; i < numParts; i++ {
+		adj := s.Adjs[i]
+		sub, err := adj.Subscribe(ctx, params.ID())
+		require.NoError(t, err)
+		subs[i] = sub
+	}
+	for i := 0; i < numParts; i++ {
 		state.Version = uint64(int(state.Version) + i) // manipulate the state
 		tx := testSignState(t, s.Accs, state)
 		txs[i] = &tx
@@ -101,22 +107,17 @@ func registerMultiple(t *testing.T, numParts int, parallel bool) {
 				time.Sleep(sleepDuration)
 			}
 
-			// create subscription
-			adj := s.Adjs[i]
-			sub, err := adj.Subscribe(ctx, params.ID())
-			require.NoError(t, err)
-			subs[i] = sub
-
 			// register
+			adj := s.Adjs[i]
 			req := channel.AdjudicatorReq{
 				Params: params,
 				Tx:     tx,
 			}
-			err = adj.Register(ctx, req, nil)
+			err := adj.Register(ctx, req, nil)
 			require.True(t, err == nil || ethchannel.IsErrTxFailed(err), "Registering peer %d", i)
 		}
 		if parallel {
-			go regCT.StageN("register loop", numParts, func(rt pkgtest.ConcT) {
+			go regCT.StageN("register loop", numParts, func(_ pkgtest.ConcT) {
 				reg(i, tx)
 			})
 		} else {
@@ -135,9 +136,9 @@ func registerMultiple(t *testing.T, numParts int, parallel bool) {
 	for i := 0; i < numParts; i++ {
 		tx, sub := txs[i], subs[i]
 		event := sub.Next()
-		sub.Close()
+		require.NoError(t, sub.Close())
 		require.NotEqual(t, event, &channel.RegisteredEvent{}, "registering should return valid event")
-		require.GreaterOrEqualf(t, event.Version(), tx.State.Version, "peer %d: expected version >= %d, got %d", i, event.Version(), tx.State.Version)
+		require.GreaterOrEqualf(t, event.Version(), tx.Version, "peer %d: expected version >= %d, got %d", i, event.Version(), tx.Version)
 		require.False(t, event.Timeout().IsElapsed(ctx),
 			"registering non-final state should return unelapsed timeout")
 		t.Logf("Peer[%d] registered successfully", i)
@@ -171,7 +172,7 @@ func TestRegister_FinalState(t *testing.T) {
 	adj := s.Adjs[0]
 	sub, err := adj.Subscribe(ctx, params.ID())
 	require.NoError(t, err)
-	defer sub.Close()
+	defer func() { require.NoError(t, sub.Close()) }()
 	// register
 	tx := testSignState(t, s.Accs, state)
 	req := channel.AdjudicatorReq{

@@ -370,7 +370,10 @@ func (f *Funder) depositedSub(ctx context.Context, contract *bind.BoundContract,
 			Filter: [][]interface{}{filter},
 		}
 	}
-	sub, err := subscription.Subscribe(ctx, f, contract, event, startBlockOffset, f.txFinalityDepth)
+	// Already-mined funding deposits are reconciled via periodic on-chain balance
+	// checks in the wait loops below, so the live subscription does not need to
+	// replay historical logs here.
+	sub, err := subscription.Subscribe(ctx, f, contract, event, 0, f.txFinalityDepth)
 	return sub, errors.WithMessage(err, "subscribing to deposited event")
 }
 
@@ -442,6 +445,9 @@ loop:
 			idx := partIdx(event.FundingID, fundingIDs)
 			remainingForPart := remaining[idx]
 			remainingForPart.Sub(remainingForPart, event.Amount)
+			if remainingForPart.Sign() < 0 {
+				remainingForPart.SetInt64(0)
+			}
 			log.Debugf("peer[%d]: got: %v, remaining for [%d, %d] = %v", request.Idx, event.Amount, asset.assetIndex, idx, remainingForPart)
 
 			// Exit loop if fully funded.
@@ -639,7 +645,7 @@ func (f *Funder) remainingFundingOnChain(ctx context.Context, expected []channel
 		if expectedBal == nil || expectedBal.Sign() <= 0 {
 			continue
 		}
-		holding, err := asset.Assetholder.Holdings(callOpts, fundingIDs[i])
+		holding, err := asset.Holdings(callOpts, fundingIDs[i])
 		if err != nil {
 			return nil, errors.WithMessagef(err, "getting holdings for asset %d, peer %d", asset.assetIndex, i)
 		}

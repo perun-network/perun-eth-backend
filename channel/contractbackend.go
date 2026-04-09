@@ -183,10 +183,11 @@ func (c *ContractBackend) ConfirmTransaction(ctx context.Context, tx *types.Tran
 			if receipt.GasUsed+1000 > tx.Gas() {
 				log.WithFields(log.Fields{"Used": receipt.GasUsed, "Limit": tx.Gas()}).Warn("TX could be out of gas")
 			}
+			return receipt, errors.Wrapf(ErrTxFailed, "%v", err)
 		} else {
 			log.Warn("TX failed with reason: ", reason)
+			return receipt, errors.Wrapf(ErrTxFailed, "execution reverted: %s", reason)
 		}
-		return receipt, errors.WithStack(ErrTxFailed)
 	}
 	return receipt, nil
 }
@@ -217,7 +218,7 @@ func (c *ContractBackend) confirmNTimes(ctx context.Context, tx *types.Transacti
 		select {
 		case head := <-heads:
 			// Poll the receipt of the TX.
-			receipt, err := c.ContractInterface.TransactionReceipt(ctx, tx.Hash())
+			receipt, err := c.TransactionReceipt(ctx, tx.Hash())
 			if err != nil {
 				err = cherrors.CheckIsChainNotReachableError(err)
 				log.Warnf("Failed to get tx receipt: %v", err)

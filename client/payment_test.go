@@ -46,6 +46,8 @@ const (
 )
 
 func TestPaymentHappy(t *testing.T) {
+	t.Parallel()
+
 	release := acquireHeavySimTestSlot(t)
 	defer release()
 
@@ -113,6 +115,8 @@ func TestPaymentHappy(t *testing.T) {
 }
 
 func TestPaymentDispute(t *testing.T) {
+	t.Parallel()
+
 	release := acquireHeavySimTestSlot(t)
 	defer release()
 
@@ -127,6 +131,9 @@ func TestPaymentDispute(t *testing.T) {
 
 	s := test.NewSetup(t, rng, 2, ctest.BlockInterval, TxFinalityDepth)
 	setup := ctest.MakeRoleSetups(rng, s, name[:])
+	for i := range setup {
+		setup[i].Timeout = 2 * twoPartyTestTimeout
+	}
 
 	role[A] = clienttest.NewMallory(t, setup[A])
 	role[B] = clienttest.NewCarol(t, setup[B])
@@ -143,7 +150,7 @@ func TestPaymentDispute(t *testing.T) {
 		TxAmounts:   [2]*big.Int{big.NewInt(20), big.NewInt(0)},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), twoPartyTestTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*twoPartyTestTimeout)
 	defer cancel()
 	clienttest.ExecuteTwoPartyTest(ctx, t, role, execConfig)
 

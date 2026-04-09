@@ -30,7 +30,6 @@ import (
 	"github.com/perun-network/perun-eth-backend/bindings"
 	"github.com/perun-network/perun-eth-backend/bindings/assetholder"
 	cherrors "github.com/perun-network/perun-eth-backend/channel/errors"
-	"github.com/perun-network/perun-eth-backend/subscription"
 	"github.com/perun-network/perun-eth-backend/wallet"
 
 	"perun.network/go-perun/channel"
@@ -41,8 +40,25 @@ import (
 // Withdraw ensures that a channel has been concluded and the final outcome.
 // withdrawn from the asset holders.
 func (a *Adjudicator) Withdraw(ctx context.Context, req channel.AdjudicatorReq, subStates channel.StateMap) error {
-	if err := a.ensureConcluded(ctx, req, subStates); err != nil {
-		return errors.WithMessage(err, "ensure Concluded")
+	if req.Tx.IsFinal {
+		fullyWithdrawn, err := a.isFullyWithdrawn(ctx, req)
+		if err != nil {
+			return errors.WithMessage(err, "checking withdrawal status")
+		}
+		if fullyWithdrawn {
+			return nil
+		}
+	}
+
+	dispute, err := a.dispute(ctx, req.Tx.ID)
+	if err != nil {
+		return errors.WithMessage(err, "querying dispute")
+	}
+	concluded := hasRecordedDispute(dispute) && dispute.Phase == phaseConcluded
+	if !concluded {
+		if err := a.ensureConcluded(ctx, req, subStates); err != nil {
+			return errors.WithMessage(err, "ensure Concluded")
+		}
 	}
 	if err := a.checkConcludedState(ctx, req, subStates); err != nil {
 		return errors.WithMessage(err, "check concluded state")
@@ -50,12 +66,34 @@ func (a *Adjudicator) Withdraw(ctx context.Context, req channel.AdjudicatorReq, 
 	return errors.WithMessage(a.ensureWithdrawn(ctx, req, subStates), "ensure Withdrawn")
 }
 
+func (a *Adjudicator) isFullyWithdrawn(ctx context.Context, req channel.AdjudicatorReq) (bool, error) {
+	for _, asset := range filterAssets(req.Tx.Assets, a.chainID) {
+		index, ok := assetIdx(req.Tx.Assets, asset)
+		if !ok {
+			return false, errors.New("asset not found in adjudicator request")
+		}
+		if req.Tx.Allocation.Balances[index][req.Idx].Sign() == 0 {
+			continue
+		}
+		contract := bindAssetHolder(a.ContractBackend, asset, index)
+		fundingID := FundingIDs(req.Params.ID(), req.Params.Parts[req.Idx])[0]
+		withdrawn, err := isWithdrawn(ctx, contract, fundingID)
+		if err != nil {
+			return false, errors.WithMessage(err, "checking asset withdrawal status")
+		}
+		if !withdrawn {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 // ensureWithdrawn ensures that the channel has been withdrawn from the asset.
 func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.AdjudicatorReq, subStates channel.StateMap) error {
 	g, ctx := errgroup.WithContext(ctx)
 
-	for _, asset := range filterAssets(req.Tx.Allocation.Assets, a.chainID) {
-		index, ok := assetIdx(req.Tx.Allocation.Assets, asset)
+	for _, asset := range filterAssets(req.Tx.Assets, a.chainID) {
+		index, ok := assetIdx(req.Tx.Assets, asset)
 		if !ok {
 			return errors.New("asset not found in adjudicator request")
 		}
@@ -66,30 +104,26 @@ func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.Adjudicat
 		}
 		asset := asset // Capture asset locally for usage in closure.
 		g.Go(func() error {
-			// Create subscription
 			contract := bindAssetHolder(a.ContractBackend, asset, index)
 			fundingID := FundingIDs(req.Params.ID(), req.Params.Parts[req.Idx])[0]
-			events := make(chan *subscription.Event, adjEventBuffSize)
-			subErr := make(chan error, 1)
-			sub, err := subscription.Subscribe(ctx, a.ContractBackend, contract.contract, withdrawnEventType(fundingID), startBlockOffset, a.txFinalityDepth)
+			withdrawn, err := isWithdrawn(ctx, contract, fundingID)
 			if err != nil {
-				return errors.WithMessage(err, "subscribing")
+				return errors.WithMessage(err, "checking withdrawal status")
 			}
-			defer sub.Close()
+			if withdrawn {
+				return nil
+			}
 
 			const maxWithdrawAttempts = 4
 			for attempt := 0; ; attempt++ {
-				// Check for past event.
-				if err := sub.ReadPast(ctx, events); err != nil {
-					return errors.WithMessage(err, "reading past events")
-				}
-				select {
-				case <-events:
-					return nil
-				default:
-				}
-				// No withdrawn event found in the past, send transaction.
 				if err := a.callAssetWithdraw(ctx, req, contract); err != nil {
+					withdrawn, withdrawErr := isWithdrawn(ctx, contract, fundingID)
+					if withdrawErr != nil {
+						return errors.WithMessage(withdrawErr, "checking withdrawal status")
+					}
+					if withdrawn {
+						return nil
+					}
 					// A concurrent conclude/settle path can make the asset holder
 					// reject the first withdraw attempt with a transient revert
 					// before the asset is marked settled. Only retry after
@@ -115,34 +149,28 @@ func (a *Adjudicator) ensureWithdrawn(ctx context.Context, req channel.Adjudicat
 				break
 			}
 
-			// Wait for event.
-			go func() {
-				subErr <- sub.Read(ctx, events)
-			}()
-
-			select {
-			case <-events:
-				return nil
-			case <-ctx.Done():
-				return errors.Wrap(ctx.Err(), "context cancelled")
-			case err = <-subErr:
-				if err != nil {
-					return errors.WithMessage(err, "subscription error")
-				}
-				return errors.New("subscription closed")
-			}
+			return nil
 		})
 	}
 	return g.Wait()
 }
 
 func isAssetSettled(ctx context.Context, contract assetHolder, channelID channel.ID) (bool, error) {
-	settled, err := contract.Assetholder.Settled(&bind.CallOpts{Context: ctx}, channelID)
+	settled, err := contract.Settled(&bind.CallOpts{Context: ctx}, channelID)
 	if err != nil {
 		err = cherrors.CheckIsChainNotReachableError(err)
 		return false, err
 	}
 	return settled, nil
+}
+
+func isWithdrawn(ctx context.Context, contract assetHolder, fundingID [32]byte) (bool, error) {
+	holdings, err := contract.Holdings(&bind.CallOpts{Context: ctx}, fundingID)
+	if err != nil {
+		err = cherrors.CheckIsChainNotReachableError(err)
+		return false, err
+	}
+	return holdings.Sign() == 0, nil
 }
 
 func waitNextHead(ctx context.Context, cr ethereum.ChainReader) error {
@@ -165,16 +193,6 @@ func waitNextHead(ctx context.Context, cr ethereum.ChainReader) error {
 		return errors.New("head subscription closed")
 	case <-ctx.Done():
 		return errors.Wrap(ctx.Err(), "context cancelled")
-	}
-}
-
-func withdrawnEventType(fundingID [32]byte) subscription.EventFactory {
-	return func() *subscription.Event {
-		return &subscription.Event{
-			Name:   bindings.Events.AhWithdrawn,
-			Data:   new(assetholder.AssetholderWithdrawn),
-			Filter: [][]interface{}{{fundingID}},
-		}
 	}
 }
 
@@ -222,7 +240,7 @@ func (a *Adjudicator) callAssetWithdraw(ctx context.Context, request channel.Adj
 
 func (a *Adjudicator) newWithdrawalAuth(request channel.AdjudicatorReq, asset assetHolder) (assetholder.AssetHolderWithdrawalAuth, []byte, error) {
 	fid := FundingID(request.Tx.ID, request.Params.Parts[request.Idx][wallet.BackendID])
-	bal, err := asset.Assetholder.Holdings(nil, fid)
+		bal, err := asset.Holdings(nil, fid)
 	if err != nil {
 		return assetholder.AssetHolderWithdrawalAuth{}, nil, fmt.Errorf("getting balance: %w", err)
 	}

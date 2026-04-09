@@ -29,6 +29,8 @@ import (
 )
 
 func TestVirtualChannelOptimistic(t *testing.T) {
+	t.Parallel()
+
 	release := acquireHeavySimTestSlot(t)
 	defer release()
 
@@ -44,6 +46,8 @@ func TestVirtualChannelOptimistic(t *testing.T) {
 }
 
 func TestVirtualChannelDispute(t *testing.T) {
+	t.Parallel()
+
 	release := acquireHeavySimTestSlot(t)
 	defer release()
 

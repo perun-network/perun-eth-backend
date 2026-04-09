@@ -25,11 +25,13 @@ import (
 )
 
 const (
-	challengeDuration = 15 * uint64(time.Second/test.BlockInterval)
+	challengeDuration = 10 * uint64(time.Second/test.BlockInterval)
 	testDuration      = 60 * time.Second
 )
 
 func TestMultiLedgerHappy(t *testing.T) {
+	t.Parallel()
+
 	release := acquireHeavySimTestSlot(t)
 	defer release()
 
@@ -41,6 +43,8 @@ func TestMultiLedgerHappy(t *testing.T) {
 }
 
 func TestMultiLedgerDispute(t *testing.T) {
+	t.Parallel()
+
 	release := acquireHeavySimTestSlot(t)
 	defer release()
 

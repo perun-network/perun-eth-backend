@@ -67,10 +67,6 @@ const transientFilterLogsErr = "failed to retrieve log value pointer"
 // `pastBlocks` can be used to define how many blocks into the past the sub
 // should query.
 func NewEventSub(ctx context.Context, chain ethereum.ChainReader, contract *bind.BoundContract, eFact EventFactory, pastBlocks uint64) (*EventSub, error) {
-	startBlock, err := calcStartBlock(ctx, chain, pastBlocks)
-	if err != nil {
-		return nil, errors.WithMessage(err, "calculating starting block number")
-	}
 	endBlock, err := latestBlockNumber(ctx, chain)
 	if err != nil {
 		return nil, errors.WithMessage(err, "calculating ending block number")
@@ -80,20 +76,31 @@ func NewEventSub(ctx context.Context, chain ethereum.ChainReader, contract *bind
 	// through the watch stream, which can otherwise delay or starve fresh
 	// events behind duplicates under heavier test load.
 	watchStart := endBlock + 1
-	event := eFact()
+	evt := eFact()
 	watchOpts := &bind.WatchOpts{Start: &watchStart}
-	watchLogs, watchSub, err := contract.WatchLogs(watchOpts, event.Name, event.Filter...)
+	watchLogs, watchSub, err := contract.WatchLogs(watchOpts, evt.Name, evt.Filter...)
 	if err != nil {
 		err = cherrors.CheckIsChainNotReachableError(err)
 		return nil, errors.WithMessage(err, "watching logs")
 	}
-	// Read past events.
-	filterOpts := &bind.FilterOpts{Start: startBlock, End: &endBlock}
-	filterLogs, filterSub, err := filterLogsWithRetry(ctx, contract, filterOpts, event.Name, event.Filter...)
-	if err != nil {
-		watchSub.Unsubscribe()
-		err = cherrors.CheckIsChainNotReachableError(err)
-		return nil, errors.WithMessage(err, "filtering logs")
+	var (
+		filterLogs chan types.Log
+		filterSub event.Subscription
+	)
+	if pastBlocks > 0 {
+		startBlock, err := calcStartBlock(ctx, chain, pastBlocks)
+		if err != nil {
+			watchSub.Unsubscribe()
+			return nil, errors.WithMessage(err, "calculating starting block number")
+		}
+		// Read past events.
+		filterOpts := &bind.FilterOpts{Start: startBlock, End: &endBlock}
+		filterLogs, filterSub, err = filterLogsWithRetry(ctx, contract, filterOpts, evt.Name, evt.Filter...)
+		if err != nil {
+			watchSub.Unsubscribe()
+			err = cherrors.CheckIsChainNotReachableError(err)
+			return nil, errors.WithMessage(err, "filtering logs")
+		}
 	}
 
 	ret := &EventSub{
@@ -106,7 +113,9 @@ func NewEventSub(ctx context.Context, chain ethereum.ChainReader, contract *bind
 	}
 	ret.closer.OnCloseAlways(func() {
 		watchSub.Unsubscribe()
-		filterSub.Unsubscribe()
+		if filterSub != nil {
+			filterSub.Unsubscribe()
+		}
 	})
 	return ret, nil
 }
@@ -185,6 +194,10 @@ func (s *EventSub) ReadPast(ctx context.Context, sink chan<- *Event) error {
 }
 
 func (s *EventSub) readPast(ctx context.Context, sink chan<- *Event) error {
+	if s.filterLogs == nil || s.filterSub == nil {
+		return nil
+	}
+
 	var logs []types.Log
 	// Two read loops are needed if the event sub is closed before all events
 	// could be read.

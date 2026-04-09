@@ -29,6 +29,9 @@ import (
 func TestBlockTimeout_IsElapsed(t *testing.T) {
 	assert := assert.New(t)
 	sb := test.NewSimulatedBackend()
+	t.Cleanup(func() {
+		require.NoError(t, sb.Close())
+	})
 	head, err := sb.HeaderByNumber(context.Background(), nil)
 	require.NoError(t, err)
 	bt := ethchannel.NewBlockTimeout(sb, head.Time+100)
@@ -47,6 +50,9 @@ func TestBlockTimeout_Wait(t *testing.T) {
 	)
 
 	sb := test.NewSimulatedBackend()
+	t.Cleanup(func() {
+		require.NoError(t, sb.Close())
+	})
 	head, err := sb.HeaderByNumber(context.Background(), nil)
 	require.NoError(t, err)
 	bt := ethchannel.NewBlockTimeout(sb, head.Time+uint64(blockTimeout/time.Second))

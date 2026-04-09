@@ -222,7 +222,11 @@ func TestWithdraw(t *testing.T) {
 
 	testWithdraw := func(t *testing.T, shouldWork bool) {
 		t.Helper()
-		ctx, cancel := context.WithTimeout(context.Background(), defaultTxTimeout)
+		timeout := defaultTxTimeout
+		if !shouldWork {
+			timeout = defaultTxTimeout / 5
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		req.Tx = testSignState(t, s.Accs, state)
 		err := s.Adjs[0].Withdraw(ctx, req, nil)
@@ -284,7 +288,7 @@ func TestWithdrawNonFinal(t *testing.T) {
 	adj := s.Adjs[0]
 	sub, err := adj.Subscribe(ctx, params.ID())
 	require.NoError(t, err)
-	defer sub.Close()
+	defer func() { require.NoError(t, sub.Close()) }()
 
 	// register
 	req := channel.AdjudicatorReq{

@@ -62,6 +62,9 @@ type (
 func NewSimSetup(t *testing.T, rng *rand.Rand, txFinalityDepth uint64, blockInterval time.Duration, opts ...SimBackendOpt) *SimSetup {
 	t.Helper()
 	simBackend := NewSimulatedBackend(opts...)
+	t.Cleanup(func() {
+		require.NoError(t, simBackend.Close())
+	})
 	ksWallet := wallettest.RandomWallet(BackendID).(*keystore.Wallet)
 	txAccount := ksWallet.NewRandomAccount(rng).(*keystore.Account)
 	ctx, cancel := context.WithTimeout(context.Background(), defaultSetupTimeout)
