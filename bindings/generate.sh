@@ -73,4 +73,7 @@ generate "PerunToken" "peruntoken"
 # Applications
 generate "TrivialApp" "trivialapp"
 
+# Liquidity
+generate "LiquidityPool" "liquiditypool"
+
 echo "Bindings generated successfully."
