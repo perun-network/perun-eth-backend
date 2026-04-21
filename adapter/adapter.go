@@ -18,7 +18,9 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"time"
 
+	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -38,18 +40,65 @@ type liquidityPoolContract interface {
 	TotalLockedETH(opts *bind.CallOpts) (*big.Int, error)
 }
 
+type adapterBackend interface {
+	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
+	SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error)
+	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
+	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
+	SubscribeFilterLogs(ctx context.Context, q ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error)
+	NewTransactor(ctx context.Context, gasLimit uint64, acc accounts.Account) (*bind.TransactOpts, error)
+	TxFinalityDepth() uint64
+}
+
 type txOptsFactory func(ctx context.Context) (*bind.TransactOpts, error)
 type txConfirmer func(ctx context.Context, tx *types.Transaction) (*types.Receipt, error)
 
+// AdapterOption configures runtime behavior of the adapter.
+type AdapterOption func(*adapterConfig)
+
+type adapterConfig struct {
+	retryInitial time.Duration
+	retryMax     time.Duration
+	finality     uint64
+}
+
+const (
+	defaultRetryInitial = 250 * time.Millisecond
+	defaultRetryMax     = 5 * time.Second
+)
+
+// WithRetryBackoff configures reconnect backoff bounds for event subscriptions.
+func WithRetryBackoff(initial, max time.Duration) AdapterOption {
+	return func(c *adapterConfig) {
+		if initial > 0 {
+			c.retryInitial = initial
+		}
+		if max > 0 {
+			c.retryMax = max
+		}
+	}
+}
+
+// WithFinalityDepth overrides transaction finality depth for tx confirmation.
+// A zero value keeps backend default finality depth.
+func WithFinalityDepth(depth uint64) AdapterOption {
+	return func(c *adapterConfig) {
+		if depth > 0 {
+			c.finality = depth
+		}
+	}
+}
+
 // LiquidityPoolAdapter is the ETH execution adapter between Hub/Websocket and LiquidityPool.
 type LiquidityPoolAdapter struct {
-	backend      *channel.ContractBackend
+	backend      adapterBackend
 	contract     liquidityPoolContract
 	poolAddress  common.Address
 	newTxOpts    txOptsFactory
 	confirmTx    txConfirmer
-	retryInitial int
-	retryMax     int
+	retryInitial time.Duration
+	retryMax     time.Duration
+	finality     uint64
 }
 
 // NewLiquidityPoolAdapter creates a new adapter over a deployed LiquidityPool contract.
@@ -58,11 +107,31 @@ func NewLiquidityPoolAdapter(
 	poolAddress common.Address,
 	txSender accounts.Account,
 	gasLimit uint64,
+	opts ...AdapterOption,
 ) (*LiquidityPoolAdapter, error) {
 	contract, err := liquiditypool.NewLiquidityPool(poolAddress, backend)
 	if err != nil {
 		return nil, fmt.Errorf("binding LiquidityPool: %w", err)
 	}
+
+	cfg := adapterConfig{
+		retryInitial: defaultRetryInitial,
+		retryMax:     defaultRetryMax,
+		finality:     backend.TxFinalityDepth(),
+	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	if cfg.retryInitial <= 0 {
+		cfg.retryInitial = defaultRetryInitial
+	}
+	if cfg.retryMax < cfg.retryInitial {
+		cfg.retryMax = cfg.retryInitial
+	}
+	if cfg.finality < 1 {
+		cfg.finality = 1
+	}
+
 	return &LiquidityPoolAdapter{
 		backend:     backend,
 		contract:    contract,
@@ -71,25 +140,98 @@ func NewLiquidityPoolAdapter(
 			return backend.NewTransactor(ctx, gasLimit, txSender)
 		},
 		confirmTx: func(ctx context.Context, tx *types.Transaction) (*types.Receipt, error) {
-			return backend.ConfirmTransaction(ctx, tx, txSender)
+			return confirmWithFinality(ctx, backend, tx, cfg.finality)
 		},
-		retryInitial: 250,
-		retryMax:     5000,
+		retryInitial: cfg.retryInitial,
+		retryMax:     cfg.retryMax,
+		finality:     cfg.finality,
 	}, nil
 }
 
 func newTestAdapter(
+	backend adapterBackend,
 	contract liquidityPoolContract,
 	newTxOpts txOptsFactory,
 	confirm txConfirmer,
 ) *LiquidityPoolAdapter {
 	return &LiquidityPoolAdapter{
+		backend:      backend,
 		contract:     contract,
 		newTxOpts:    newTxOpts,
 		confirmTx:    confirm,
-		retryInitial: 5,
-		retryMax:     50,
+		retryInitial: 5 * time.Millisecond,
+		retryMax:     50 * time.Millisecond,
+		finality:     1,
 	}
+}
+
+func confirmWithFinality(ctx context.Context, backend adapterBackend, tx *types.Transaction, finalityDepth uint64) (*types.Receipt, error) {
+	if finalityDepth < 1 {
+		finalityDepth = 1
+	}
+
+	head, err := waitMinedHead(ctx, backend, tx)
+	if err != nil {
+		return nil, err
+	}
+
+	heads := make(chan *types.Header, 10)
+	heads <- head
+	hsub, err := backend.SubscribeNewHead(ctx, heads)
+	if err != nil {
+		return nil, err
+	}
+	defer hsub.Unsubscribe()
+
+	for {
+		select {
+		case head := <-heads:
+			receipt, err := backend.TransactionReceipt(ctx, tx.Hash())
+			if err != nil || receipt == nil {
+				continue
+			}
+			if isReceiptFinal(receipt, head, finalityDepth) {
+				return receipt, nil
+			}
+		case err := <-hsub.Err():
+			if err != nil {
+				return nil, err
+			}
+			return nil, context.Canceled
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+}
+
+func waitMinedHead(ctx context.Context, backend adapterBackend, tx *types.Transaction) (*types.Header, error) {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		receipt, err := backend.TransactionReceipt(ctx, tx.Hash())
+		if err == nil && receipt != nil {
+			return backend.HeaderByNumber(ctx, nil)
+		}
+
+		timer := time.NewTimer(100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func isReceiptFinal(receipt *types.Receipt, head *types.Header, finalityDepth uint64) bool {
+	depth := new(big.Int).SetUint64(finalityDepth)
+	diff := new(big.Int).Sub(head.Number, receipt.BlockNumber)
+	included := new(big.Int).Add(diff, big.NewInt(1))
+	return included.Cmp(depth) >= 0
 }
 
 // FundChannel calls fundChannel(channelId, amount) on LiquidityPool.

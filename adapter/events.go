@@ -153,8 +153,8 @@ func (a *LiquidityPoolAdapter) subscribeLoop(
 		defer onClose()
 
 		nextBlock := start
-		delay := time.Duration(a.retryInitial) * time.Millisecond
-		maxDelay := time.Duration(a.retryMax) * time.Millisecond
+		delay := a.retryInitial
+		maxDelay := a.retryMax
 		if delay <= 0 {
 			delay = 250 * time.Millisecond
 		}
@@ -209,7 +209,7 @@ func (a *LiquidityPoolAdapter) subscribeLoop(
 				delay = minDuration(delay*2, maxDelay)
 				continue
 			}
-			delay = time.Duration(a.retryInitial) * time.Millisecond
+			delay = a.retryInitial
 			if delay <= 0 {
 				delay = 250 * time.Millisecond
 			}

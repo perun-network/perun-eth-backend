@@ -108,7 +108,7 @@ func TestFundChannel_HappyPath(t *testing.T) {
 	}
 
 	var captured *types.Transaction
-	a := newTestAdapter(m, func(context.Context) (*bind.TransactOpts, error) {
+	a := newTestAdapter(nil, m, func(context.Context) (*bind.TransactOpts, error) {
 		return &bind.TransactOpts{}, nil
 	}, func(_ context.Context, tx *types.Transaction) (*types.Receipt, error) {
 		captured = tx
@@ -123,7 +123,7 @@ func TestFundChannel_HappyPath(t *testing.T) {
 
 func TestFundChannel_AlreadyFunded(t *testing.T) {
 	m := &mockContract{withdrawable: big.NewInt(100), locked: big.NewInt(1)}
-	a := newTestAdapter(m, nil, nil)
+	a := newTestAdapter(nil, m, nil, nil)
 
 	err := a.FundChannel(context.Background(), [32]byte{2}, big.NewInt(10))
 	require.Error(t, err)
@@ -132,7 +132,7 @@ func TestFundChannel_AlreadyFunded(t *testing.T) {
 
 func TestFundChannel_InsufficientFree(t *testing.T) {
 	m := &mockContract{withdrawable: big.NewInt(9), locked: big.NewInt(0)}
-	a := newTestAdapter(m, nil, nil)
+	a := newTestAdapter(nil, m, nil, nil)
 
 	err := a.FundChannel(context.Background(), [32]byte{2}, big.NewInt(10))
 	require.Error(t, err)
@@ -146,7 +146,7 @@ func TestSettleChannel_HappyPath(t *testing.T) {
 	}
 
 	var captured *types.Transaction
-	a := newTestAdapter(m, func(context.Context) (*bind.TransactOpts, error) {
+	a := newTestAdapter(nil, m, func(context.Context) (*bind.TransactOpts, error) {
 		return &bind.TransactOpts{}, nil
 	}, func(_ context.Context, tx *types.Transaction) (*types.Receipt, error) {
 		captured = tx
@@ -162,7 +162,7 @@ func TestSettleChannel_HappyPath(t *testing.T) {
 
 func TestSettleChannel_BelowPrincipal(t *testing.T) {
 	m := &mockContract{locked: big.NewInt(11)}
-	a := newTestAdapter(m, nil, nil)
+	a := newTestAdapter(nil, m, nil, nil)
 
 	err := a.SettleChannel(context.Background(), [32]byte{4}, big.NewInt(10))
 	require.Error(t, err)
@@ -171,7 +171,7 @@ func TestSettleChannel_BelowPrincipal(t *testing.T) {
 
 func TestSettleChannel_ChannelNotFound(t *testing.T) {
 	m := &mockContract{locked: big.NewInt(0)}
-	a := newTestAdapter(m, nil, nil)
+	a := newTestAdapter(nil, m, nil, nil)
 
 	err := a.SettleChannel(context.Background(), [32]byte{4}, big.NewInt(10))
 	require.Error(t, err)
@@ -180,7 +180,7 @@ func TestSettleChannel_ChannelNotFound(t *testing.T) {
 
 func TestGetPoolState_HappyPath(t *testing.T) {
 	m := &mockContract{totalAssets: big.NewInt(123), totalLocked: big.NewInt(45)}
-	a := newTestAdapter(m, nil, nil)
+	a := newTestAdapter(nil, m, nil, nil)
 
 	reserve, locked, err := a.GetPoolState(context.Background())
 	require.NoError(t, err)
@@ -191,7 +191,7 @@ func TestGetPoolState_HappyPath(t *testing.T) {
 func TestGetOperator_Delegated(t *testing.T) {
 	want := common.HexToAddress("0x1000")
 	m := &mockContract{operator: want}
-	a := newTestAdapter(m, nil, nil)
+	a := newTestAdapter(nil, m, nil, nil)
 
 	got, err := a.GetOperator(context.Background())
 	require.NoError(t, err)
