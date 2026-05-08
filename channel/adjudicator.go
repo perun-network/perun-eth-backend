@@ -31,6 +31,7 @@ import (
 	"perun.network/go-perun/channel"
 	"perun.network/go-perun/client"
 	"perun.network/go-perun/log"
+	"perun.network/go-perun/wallet"
 	psync "polycry.pt/poly-go/sync"
 )
 
@@ -104,6 +105,19 @@ func (a *Adjudicator) callRegister(ctx context.Context, req channel.AdjudicatorR
 			sub := toEthSignedStates(subChannels)
 			return a.contract.Register(opts, ch, sub)
 		}, Register)
+}
+
+func (a *Adjudicator) callCoordinate(ctx context.Context, req channel.AdjudicatorReq, subChannels []channel.SignedState, coordSigs []wallet.Sig) error {
+	return a.call(ctx, req,
+		func(opts *bind.TransactOpts, params adjudicator.ChannelParams, state adjudicator.ChannelState, sigs [][]byte) (*types.Transaction, error) {
+			ch := adjudicator.AdjudicatorSignedState{
+				Params: params,
+				State:  state,
+				Sigs:   sigs,
+			}
+			sub := toEthSignedStates(subChannels)
+			return a.contract.Coordinate(opts, ch, sub, coordSigs)
+		}, Coordinate)
 }
 
 func toEthSignedStates(subChannels []channel.SignedState) (ethSubChannels []adjudicator.AdjudicatorSignedState) {

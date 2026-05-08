@@ -344,6 +344,11 @@ func (a *Adjudicator) waitConcludable(ctx context.Context, req channel.Adjudicat
 
 	switch dispute.Phase {
 	case phaseDispute:
+		needCoordinate := needCoordinate(ctx, req)
+		if needCoordinate {
+			return errors.New("channel needs to be coordinated before concluding")
+		}
+
 		t := dispute.Timeout
 		if dispute.HasApp && !channel.IsNoApp(req.Params.App) {
 			t += dispute.ChallengeDuration
@@ -352,6 +357,8 @@ func (a *Adjudicator) waitConcludable(ctx context.Context, req channel.Adjudicat
 		return NewBlockTimeout(a.ContractInterface, t).Wait(ctx)
 	case phaseForceExec:
 		return NewBlockTimeout(a.ContractInterface, dispute.Timeout+concludeWaitSlack).Wait(ctx)
+	case phaseCoordinated:
+		return nil
 	case phaseConcluded:
 		return nil
 	default:

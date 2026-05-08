@@ -230,6 +230,9 @@ func (a *Adjudicator) convertEvent(ctx context.Context, e *adjudicator.Adjudicat
 			Idx:                  channel.Index(args.ActorIdx.Uint64()),
 		}, nil
 
+	case phaseCoordinated:
+		// return &channel.CoordinatedEvent{AdjudicatorEventBase: *base}, nil
+		panic("coordinated event should not be emitted by adjudicator contract")
 	case phaseConcluded:
 		return &channel.ConcludedEvent{AdjudicatorEventBase: *base}, nil
 

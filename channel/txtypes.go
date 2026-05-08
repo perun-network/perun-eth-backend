@@ -25,6 +25,7 @@ type (
 // Fund funds the channel for a given user.
 // Register registers a state of the channel. The state be concluded after the challenge duration has passed.
 // Progress progresses the state of the channel directly on the blockchain.
+// Coordinate coordinates the state of the channel directly on the blockchain.
 // Conclude concludes the state of a channel after it had been registered and the challenge duration has passed.
 // ConcludeFinal directly concludes the finalized state of the channel without registering it.
 // Withdraw withdraws the funds for a given user after the channel was concluded.
@@ -32,6 +33,7 @@ const (
 	Fund OnChainTxType = iota
 	Register
 	Progress
+	Coordinate
 	Conclude
 	ConcludeFinal
 	Withdraw
@@ -41,6 +43,7 @@ var onChainTxTypeNames = [...]string{
 	"fund",
 	"register",
 	"progress",
+	"coordinate",
 	"conclude",
 	"concludeFinal",
 	"withdraw",
