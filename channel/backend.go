@@ -35,6 +35,7 @@ import (
 const (
 	phaseDispute = iota
 	phaseForceExec
+	phaseCoordinated
 	phaseConcluded
 	ethereumAddressLength = 20
 )
