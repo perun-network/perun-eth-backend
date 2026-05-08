@@ -1,3 +1,6 @@
 /bindings/*/*.abi
 /bindings/*/*.bin
 /bindings/*/*.bin-runtime
+
+.github/prompts/*
+.github/docs/*
