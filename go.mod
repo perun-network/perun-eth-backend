@@ -107,3 +107,5 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace perun.network/go-perun => github.com/NhoxxKienn/go-perun v0.0.0-20260516133729-75caf8d33058

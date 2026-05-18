@@ -50,6 +50,7 @@ var (
 	abiState      abi.Type
 	abiProgress   abi.Method
 	abiRegister   abi.Method
+	abiCoordinate abi.Method
 	// MaxBalance is the maximum amount of funds per asset that a user can possess.
 	// It is set to 2 ^ 256 - 1.
 	MaxBalance = abi.MaxUint256
@@ -81,6 +82,10 @@ func init() {
 
 	if abiRegister, ok = adj.Methods["register"]; !ok {
 		panic("Could not find method register in adjudicator contract.")
+	}
+
+	if abiCoordinate, ok = adj.Methods["coordinate"]; !ok {
+		panic("Could not find method coordinate in adjudicator contract.")
 	}
 }
 

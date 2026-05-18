@@ -1,39 +1,21 @@
-// Copyright 2020 - See NOTICE file for copyright holders.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package channel
 
 import (
 	"context"
-	"log"
-	"math/big"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/pkg/errors"
-
 	"github.com/perun-network/perun-eth-backend/bindings"
 	"github.com/perun-network/perun-eth-backend/bindings/adjudicator"
 	cherrors "github.com/perun-network/perun-eth-backend/channel/errors"
 	"github.com/perun-network/perun-eth-backend/subscription"
 	"github.com/perun-network/perun-eth-backend/wallet"
+	"github.com/pkg/errors"
 	"perun.network/go-perun/channel"
+	"perun.network/go-perun/log"
 )
 
-// Subscribe returns a new AdjudicatorSubscription to adjudicator events.
-func (a *Adjudicator) Subscribe(ctx context.Context, chID channel.ID) (channel.AdjudicatorSubscription, error) {
+func (c *Coordinator) Subscribe(ctx context.Context, chID channel.ID) (channel.AdjudicatorSubscription, error) {
 	subErr := make(chan error, 1)
 	events := make(chan *subscription.Event, adjEventBuffSize)
 	eFact := func() *subscription.Event {
@@ -44,12 +26,12 @@ func (a *Adjudicator) Subscribe(ctx context.Context, chID channel.ID) (channel.A
 		}
 	}
 	pastBlocks := uint64(0)
-	if dispute, err := a.dispute(ctx, chID); err != nil {
+	if dispute, err := c.dispute(ctx, chID); err != nil {
 		return nil, errors.WithMessage(err, "querying dispute")
 	} else if hasRecordedDispute(dispute) {
 		pastBlocks = startBlockOffset
 	}
-	sub, err := subscription.Subscribe(ctx, a.ContractBackend, a.bound, eFact, pastBlocks, a.txFinalityDepth)
+	sub, err := subscription.Subscribe(ctx, c.ContractBackend, c.bound, eFact, pastBlocks, c.txFinalityDepth)
 	if err != nil {
 		return nil, errors.WithMessage(err, "creating filter-watch event subscription")
 	}
@@ -60,32 +42,23 @@ func (a *Adjudicator) Subscribe(ctx context.Context, chID channel.ID) (channel.A
 		subErr <- sub.Read(ctx, events)
 	}()
 	rsub := &RegisteredSub{
-		cr:     a.ContractInterface,
+		cr:     c.ContractInterface,
 		sub:    sub,
 		subErr: subErr,
 		next:   make(chan channel.AdjudicatorEvent, 1),
 		err:    make(chan error, 1),
 	}
-	go rsub.updateNext(ctx, events, a)
+	go rsub.updateNextCoord(ctx, events, c)
 
 	return rsub, nil
 }
 
-// RegisteredSub implements the channel.AdjudicatorSubscription interface.
-type RegisteredSub struct {
-	cr     ethereum.ChainReader            // chain reader to read block time
-	sub    *subscription.ResistantEventSub // Event subscription
-	subErr chan error
-	next   chan channel.AdjudicatorEvent // Event sink
-	err    chan error                    // error from subscription
-}
-
-func (r *RegisteredSub) updateNext(ctx context.Context, events chan *subscription.Event, a *Adjudicator) {
+func (r *RegisteredSub) updateNextCoord(ctx context.Context, events chan *subscription.Event, c *Coordinator) {
 evloop:
 	for {
 		select {
 		case _next := <-events:
-			err := r.processNext(ctx, a, _next)
+			err := r.processNextCoord(ctx, c, _next)
 			if err != nil {
 				r.err <- err
 				break evloop
@@ -109,7 +82,7 @@ evloop:
 	close(r.next)
 }
 
-func (r *RegisteredSub) processNext(ctx context.Context, a *Adjudicator, _next *subscription.Event) (err error) {
+func (r *RegisteredSub) processNextCoord(ctx context.Context, c *Coordinator, _next *subscription.Event) (err error) {
 	next, ok := _next.Data.(*adjudicator.AdjudicatorChannelUpdate)
 	next.Raw = _next.Log
 	if !ok {
@@ -126,7 +99,7 @@ func (r *RegisteredSub) processNext(ctx context.Context, a *Adjudicator, _next *
 		// if newer version or same version and newer timeout, replace
 		if current.Version() < next.Version || current.Version() == next.Version && currentTimeout.Time < next.Timeout {
 			var e channel.AdjudicatorEvent
-			e, err = a.convertEvent(ctx, next)
+			e, err = c.convertEvent(ctx, next)
 			if err != nil {
 				return
 			}
@@ -137,7 +110,7 @@ func (r *RegisteredSub) processNext(ctx context.Context, a *Adjudicator, _next *
 		}
 	default: // next-channel is empty
 		var e channel.AdjudicatorEvent
-		e, err = a.convertEvent(ctx, next)
+		e, err = c.convertEvent(ctx, next)
 		if err != nil {
 			return
 		}
@@ -147,37 +120,12 @@ func (r *RegisteredSub) processNext(ctx context.Context, a *Adjudicator, _next *
 	return err
 }
 
-// Next returns the newest past or next blockchain event.
-// It blocks until an event is returned from the blockchain or the subscription
-// is closed. If the subscription is closed, Next immediately returns nil.
-// If there was a past event when the subscription was set up, the first call to
-// Next will return it.
-func (r *RegisteredSub) Next() channel.AdjudicatorEvent {
-	reg := <-r.next
-	if reg == nil {
-		return nil // otherwise we get (*RegisteredEvent)(nil)
-	}
-	return reg
-}
-
-// Close closes this subscription. Any pending calls to Next will return nil.
-func (r *RegisteredSub) Close() error {
-	r.sub.Close()
-	return nil
-}
-
-// Err returns the error of the event subscription.
-// Should only be called after Next returned nil.
-func (r *RegisteredSub) Err() error {
-	return <-r.err
-}
-
 //nolint:funlen
-func (a *Adjudicator) convertEvent(ctx context.Context, e *adjudicator.AdjudicatorChannelUpdate) (channel.AdjudicatorEvent, error) {
-	base := channel.NewAdjudicatorEventBase(e.ChannelID, NewBlockTimeout(a.ContractInterface, e.Timeout), e.Version)
+func (c *Coordinator) convertEvent(ctx context.Context, e *adjudicator.AdjudicatorChannelUpdate) (channel.AdjudicatorEvent, error) {
+	base := channel.NewAdjudicatorEventBase(e.ChannelID, NewBlockTimeout(c.ContractInterface, e.Timeout), e.Version)
 	switch e.Phase {
 	case phaseDispute:
-		args, err := a.fetchRegisterCallData(ctx, e.Raw.TxHash)
+		args, err := c.fetchRegisterCallData(ctx, e.Raw.TxHash)
 		if err != nil {
 			return nil, errors.WithMessage(err, "fetching call data")
 		}
@@ -211,7 +159,7 @@ func (a *Adjudicator) convertEvent(ctx context.Context, e *adjudicator.Adjudicat
 		}, nil
 
 	case phaseForceExec:
-		args, err := a.fetchProgressCallData(ctx, e.Raw.TxHash)
+		args, err := c.fetchProgressCallData(ctx, e.Raw.TxHash)
 		if err != nil {
 			return nil, errors.WithMessage(err, "fetching call data")
 		}
@@ -231,7 +179,7 @@ func (a *Adjudicator) convertEvent(ctx context.Context, e *adjudicator.Adjudicat
 		}, nil
 
 	case phaseCoordinated:
-		args, err := a.fetchCoordinateCallData(ctx, e.Raw.TxHash)
+		args, err := c.fetchCoordinateCallData(ctx, e.Raw.TxHash)
 		if err != nil {
 			return nil, errors.WithMessage(err, "fetching call data")
 		}
@@ -271,71 +219,8 @@ func (a *Adjudicator) convertEvent(ctx context.Context, e *adjudicator.Adjudicat
 	}
 }
 
-type progressCallData struct {
-	Params   adjudicator.ChannelParams
-	StateOld adjudicator.ChannelState
-	State    adjudicator.ChannelState
-	ActorIdx *big.Int
-	Sig      []byte
-}
-
-func (a *Adjudicator) fetchProgressCallData(ctx context.Context, txHash common.Hash) (*progressCallData, error) {
-	var args progressCallData
-	err := a.fetchCallData(ctx, txHash, abiProgress, &args)
-	return &args, errors.WithMessage(err, "fetching call data")
-}
-
-type registerCallData struct {
-	Channel     adjudicator.AdjudicatorSignedState
-	SubChannels []adjudicator.AdjudicatorSignedState
-}
-
-func (args *registerCallData) signedState(id channel.ID) (*adjudicator.AdjudicatorSignedState, bool) {
-	ch := &args.Channel
-	if ch.State.ChannelID == id {
-		return ch, true
-	}
-	for _, ch := range args.SubChannels {
-		if ch.State.ChannelID == id {
-			return &ch, true
-		}
-	}
-	return nil, false
-}
-
-func (a *Adjudicator) fetchRegisterCallData(ctx context.Context, txHash common.Hash) (*registerCallData, error) {
-	var args registerCallData
-	err := a.fetchCallData(ctx, txHash, abiRegister, &args)
-	return &args, errors.WithMessage(err, "fetching call data")
-}
-
-type coordinateCallData struct {
-	Channel     adjudicator.AdjudicatorSignedState
-	SubChannels []adjudicator.AdjudicatorSignedState
-	CoordSigs   [][]byte
-}
-
-func (args *coordinateCallData) signedState(id channel.ID) (*adjudicator.AdjudicatorSignedState, bool) {
-	ch := &args.Channel
-	if ch.State.ChannelID == id {
-		return ch, true
-	}
-	for _, ch := range args.SubChannels {
-		if ch.State.ChannelID == id {
-			return &ch, true
-		}
-	}
-	return nil, false
-}
-
-func (a *Adjudicator) fetchCoordinateCallData(ctx context.Context, txHash common.Hash) (*coordinateCallData, error) {
-	var args coordinateCallData
-	err := a.fetchCallData(ctx, txHash, abiCoordinate, &args)
-	return &args, errors.WithMessage(err, "fetching call data")
-}
-
-func (a *Adjudicator) fetchCallData(ctx context.Context, txHash common.Hash, method abi.Method, args interface{}) error {
-	tx, _, err := a.TransactionByHash(ctx, txHash)
+func (c *Coordinator) fetchCallData(ctx context.Context, txHash common.Hash, method abi.Method, args interface{}) error {
+	tx, _, err := c.TransactionByHash(ctx, txHash)
 	if err != nil {
 		err = cherrors.CheckIsChainNotReachableError(err)
 		return errors.WithMessage(err, "getting transaction")
@@ -354,4 +239,22 @@ func (a *Adjudicator) fetchCallData(ctx context.Context, txHash common.Hash, met
 	}
 
 	return nil
+}
+
+func (c *Coordinator) fetchProgressCallData(ctx context.Context, txHash common.Hash) (*progressCallData, error) {
+	var args progressCallData
+	err := c.fetchCallData(ctx, txHash, abiProgress, &args)
+	return &args, errors.WithMessage(err, "fetching call data")
+}
+
+func (c *Coordinator) fetchRegisterCallData(ctx context.Context, txHash common.Hash) (*registerCallData, error) {
+	var args registerCallData
+	err := c.fetchCallData(ctx, txHash, abiRegister, &args)
+	return &args, errors.WithMessage(err, "fetching call data")
+}
+
+func (c *Coordinator) fetchCoordinateCallData(ctx context.Context, txHash common.Hash) (*coordinateCallData, error) {
+	var args coordinateCallData
+	err := c.fetchCallData(ctx, txHash, abiCoordinate, &args)
+	return &args, errors.WithMessage(err, "fetching call data")
 }

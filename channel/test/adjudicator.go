@@ -105,6 +105,12 @@ func (r *SimRegisteredSub) Next() channel.AdjudicatorEvent {
 		}
 		ev.TimeoutV = block2SimTimeout(r.sb, ev.Timeout().(*ethchannel.BlockTimeout))
 		return ev
+	case *channel.CoordinatedEvent:
+		if ev == nil {
+			return nil
+		}
+		ev.TimeoutV = block2SimTimeout(r.sb, ev.Timeout().(*ethchannel.BlockTimeout))
+		return ev
 	case *channel.ConcludedEvent:
 		if ev == nil {
 			return nil
