@@ -158,13 +158,10 @@ func Verify(addr wallet.Address, s *channel.State, sig wallet.Sig) (bool, error)
 func ToEthParams(p *channel.Params) adjudicator.ChannelParams {
 	var app common.Address
 	if p.App != nil && !channel.IsNoApp(p.App) {
-		appDef, ok := p.App.Def().(channel.AppID)
+		appDef := p.App.Def()
 		ethAddress, err := ExtractEthereumAddress(appDef)
 		if err != nil {
 			log.Panicf("error extracting Ethereum address: %v", err)
-		}
-		if !ok {
-			panic("appDef is not of type channel.AppID")
 		}
 		app = ethAddress
 	}
