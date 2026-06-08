@@ -17,12 +17,14 @@ import (
 
 type mockContract struct {
 	withdrawable *big.Int
+	shares       *big.Int
 	locked       *big.Int
 	totalAssets  *big.Int
 	totalLocked  *big.Int
 	operator     common.Address
 
 	withdrawErr error
+	sharesErr   error
 	lockedErr   error
 	fundErr     error
 	settleErr   error
@@ -41,6 +43,13 @@ func (m *mockContract) WithdrawableETH(_ *bind.CallOpts) (*big.Int, error) {
 		return nil, m.withdrawErr
 	}
 	return new(big.Int).Set(m.withdrawable), nil
+}
+
+func (m *mockContract) SharesOf(_ *bind.CallOpts, _ common.Address) (*big.Int, error) {
+	if m.sharesErr != nil {
+		return nil, m.sharesErr
+	}
+	return new(big.Int).Set(m.shares), nil
 }
 
 func (m *mockContract) LockedByChannel(_ *bind.CallOpts, _ [32]byte) (*big.Int, error) {
@@ -196,6 +205,65 @@ func TestGetOperator_Delegated(t *testing.T) {
 	got, err := a.GetOperator(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, want, got)
+}
+
+func TestSharesOf_HappyPath(t *testing.T) {
+	m := &mockContract{shares: big.NewInt(777)}
+	a := newTestAdapter(nil, m, nil, nil)
+
+	got, err := a.SharesOf(context.Background(), common.HexToAddress("0xABCD"))
+	require.NoError(t, err)
+	require.Equal(t, big.NewInt(777), got)
+}
+
+func TestSharesOf_RetriableOnError(t *testing.T) {
+	m := &mockContract{sharesErr: errors.New("node down")}
+	a := newTestAdapter(nil, m, nil, nil)
+
+	_, err := a.SharesOf(context.Background(), common.HexToAddress("0xABCD"))
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrRetriable)
+}
+
+func TestWithdrawableETH_HappyPath(t *testing.T) {
+	m := &mockContract{withdrawable: big.NewInt(555)}
+	a := newTestAdapter(nil, m, nil, nil)
+
+	got, err := a.WithdrawableETH(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, big.NewInt(555), got)
+}
+
+func TestWithdrawableETH_RetriableOnError(t *testing.T) {
+	m := &mockContract{withdrawErr: errors.New("node down")}
+	a := newTestAdapter(nil, m, nil, nil)
+
+	_, err := a.WithdrawableETH(context.Background())
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrRetriable)
+}
+
+func TestPoolMetadata(t *testing.T) {
+	addr := common.HexToAddress("0xABCD")
+	a := newTestAdapter(nil, &mockContract{}, nil, nil)
+	a.poolAddress = addr
+	a.chainID = big.NewInt(1337)
+
+	gotAddr, gotChain := a.PoolMetadata()
+	require.Equal(t, addr, gotAddr)
+	require.Equal(t, big.NewInt(1337), gotChain)
+
+	// Returned chainID must be a copy; mutating it must not affect the adapter.
+	gotChain.SetInt64(1)
+	_, again := a.PoolMetadata()
+	require.Equal(t, big.NewInt(1337), again)
+}
+
+func TestPoolMetadata_NilChainID(t *testing.T) {
+	a := newTestAdapter(nil, &mockContract{}, nil, nil)
+	addr, chainID := a.PoolMetadata()
+	require.Equal(t, common.Address{}, addr)
+	require.Nil(t, chainID)
 }
 
 func TestRetriableOnRPCTimeout(t *testing.T) {

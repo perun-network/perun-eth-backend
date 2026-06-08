@@ -41,6 +41,15 @@ type ETHPoolReader interface {
 	GetPoolState(ctx context.Context) (reserve uint64, locked uint64, err error)
 }
 
+// ETHLPReader exposes read-only LP-owner queries for the liquidity dashboard.
+// Deposit/withdraw stay non-custodial (the LP signs in their own wallet), so this
+// interface intentionally exposes reads only.
+type ETHLPReader interface {
+	SharesOf(ctx context.Context, owner common.Address) (*big.Int, error)
+	WithdrawableETH(ctx context.Context) (*big.Int, error)
+	PoolMetadata() (addr common.Address, chainID *big.Int)
+}
+
 // ETHEventSubscriber exposes typed event subscriptions for reconciliation.
 type ETHEventSubscriber interface {
 	SubscribeChannelFunded(ctx context.Context, ch chan<- ChannelFundedEvent) (Subscription, error)

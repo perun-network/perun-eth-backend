@@ -32,6 +32,7 @@ import (
 
 type liquidityPoolContract interface {
 	WithdrawableETH(opts *bind.CallOpts) (*big.Int, error)
+	SharesOf(opts *bind.CallOpts, provider common.Address) (*big.Int, error)
 	LockedByChannel(opts *bind.CallOpts, channelID [32]byte) (*big.Int, error)
 	FundChannel(opts *bind.TransactOpts, channelID [32]byte, amount *big.Int) (*types.Transaction, error)
 	SettleChannel(opts *bind.TransactOpts, channelID [32]byte) (*types.Transaction, error)
@@ -94,6 +95,7 @@ type LiquidityPoolAdapter struct {
 	backend      adapterBackend
 	contract     liquidityPoolContract
 	poolAddress  common.Address
+	chainID      *big.Int
 	newTxOpts    txOptsFactory
 	confirmTx    txConfirmer
 	retryInitial time.Duration
@@ -132,10 +134,16 @@ func NewLiquidityPoolAdapter(
 		cfg.finality = 1
 	}
 
+	var chainID *big.Int
+	if cid := backend.ChainID().Int; cid != nil {
+		chainID = new(big.Int).Set(cid)
+	}
+
 	return &LiquidityPoolAdapter{
 		backend:     backend,
 		contract:    contract,
 		poolAddress: poolAddress,
+		chainID:     chainID,
 		newTxOpts: func(ctx context.Context) (*bind.TransactOpts, error) {
 			return backend.NewTransactor(ctx, gasLimit, txSender)
 		},
@@ -322,4 +330,30 @@ func (a *LiquidityPoolAdapter) GetPoolState(ctx context.Context) (reserve uint64
 		return 0, 0, fmt.Errorf("%w: totalLockedETH: %v", ErrRetriable, err)
 	}
 	return total.Uint64(), lockedBig.Uint64(), nil
+}
+
+// SharesOf returns the LP provider's share balance in the pool.
+func (a *LiquidityPoolAdapter) SharesOf(ctx context.Context, owner common.Address) (*big.Int, error) {
+	shares, err := a.contract.SharesOf(&bind.CallOpts{Context: ctx}, owner)
+	if err != nil {
+		return nil, fmt.Errorf("%w: sharesOf: %v", ErrRetriable, err)
+	}
+	return shares, nil
+}
+
+// WithdrawableETH returns the pool's free (non-locked) ETH available for withdrawal.
+func (a *LiquidityPoolAdapter) WithdrawableETH(ctx context.Context) (*big.Int, error) {
+	free, err := a.contract.WithdrawableETH(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return nil, fmt.Errorf("%w: withdrawableETH: %v", ErrRetriable, err)
+	}
+	return free, nil
+}
+
+// PoolMetadata returns the pool address and chain ID for the UI to target the contract.
+func (a *LiquidityPoolAdapter) PoolMetadata() (addr common.Address, chainID *big.Int) {
+	if a.chainID == nil {
+		return a.poolAddress, nil
+	}
+	return a.poolAddress, new(big.Int).Set(a.chainID)
 }
