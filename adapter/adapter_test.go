@@ -16,21 +16,25 @@ import (
 )
 
 type mockContract struct {
-	withdrawable *big.Int
-	shares       *big.Int
-	locked       *big.Int
-	totalAssets  *big.Int
-	totalLocked  *big.Int
-	operator     common.Address
+	withdrawable    *big.Int
+	shares          *big.Int
+	totalShares     *big.Int
+	previewWithdraw *big.Int
+	locked          *big.Int
+	totalAssets     *big.Int
+	totalLocked     *big.Int
+	operator        common.Address
 
-	withdrawErr error
-	sharesErr   error
-	lockedErr   error
-	fundErr     error
-	settleErr   error
-	totalErr    error
-	lockedTErr  error
-	opErr       error
+	withdrawErr    error
+	sharesErr      error
+	totalSharesErr error
+	previewErr     error
+	lockedErr      error
+	fundErr        error
+	settleErr      error
+	totalErr       error
+	lockedTErr     error
+	opErr          error
 
 	fundTx   *types.Transaction
 	settleTx *types.Transaction
@@ -50,6 +54,20 @@ func (m *mockContract) SharesOf(_ *bind.CallOpts, _ common.Address) (*big.Int, e
 		return nil, m.sharesErr
 	}
 	return new(big.Int).Set(m.shares), nil
+}
+
+func (m *mockContract) TotalShares(_ *bind.CallOpts) (*big.Int, error) {
+	if m.totalSharesErr != nil {
+		return nil, m.totalSharesErr
+	}
+	return new(big.Int).Set(m.totalShares), nil
+}
+
+func (m *mockContract) PreviewWithdrawETH(_ *bind.CallOpts, _ *big.Int) (*big.Int, error) {
+	if m.previewErr != nil {
+		return nil, m.previewErr
+	}
+	return new(big.Int).Set(m.previewWithdraw), nil
 }
 
 func (m *mockContract) LockedByChannel(_ *bind.CallOpts, _ [32]byte) (*big.Int, error) {
@@ -239,6 +257,42 @@ func TestWithdrawableETH_RetriableOnError(t *testing.T) {
 	a := newTestAdapter(nil, m, nil, nil)
 
 	_, err := a.WithdrawableETH(context.Background())
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrRetriable)
+}
+
+func TestTotalShares_HappyPath(t *testing.T) {
+	m := &mockContract{totalShares: big.NewInt(1000)}
+	a := newTestAdapter(nil, m, nil, nil)
+
+	got, err := a.TotalShares(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, big.NewInt(1000), got)
+}
+
+func TestTotalShares_RetriableOnError(t *testing.T) {
+	m := &mockContract{totalSharesErr: errors.New("node down")}
+	a := newTestAdapter(nil, m, nil, nil)
+
+	_, err := a.TotalShares(context.Background())
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrRetriable)
+}
+
+func TestPreviewWithdrawETH_HappyPath(t *testing.T) {
+	m := &mockContract{previewWithdraw: big.NewInt(250)}
+	a := newTestAdapter(nil, m, nil, nil)
+
+	got, err := a.PreviewWithdrawETH(context.Background(), big.NewInt(100))
+	require.NoError(t, err)
+	require.Equal(t, big.NewInt(250), got)
+}
+
+func TestPreviewWithdrawETH_RetriableOnError(t *testing.T) {
+	m := &mockContract{previewErr: errors.New("node down")}
+	a := newTestAdapter(nil, m, nil, nil)
+
+	_, err := a.PreviewWithdrawETH(context.Background(), big.NewInt(100))
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrRetriable)
 }

@@ -46,7 +46,9 @@ type ETHPoolReader interface {
 // interface intentionally exposes reads only.
 type ETHLPReader interface {
 	SharesOf(ctx context.Context, owner common.Address) (*big.Int, error)
+	TotalShares(ctx context.Context) (*big.Int, error)
 	WithdrawableETH(ctx context.Context) (*big.Int, error)
+	PreviewWithdrawETH(ctx context.Context, shares *big.Int) (*big.Int, error)
 	PoolMetadata() (addr common.Address, chainID *big.Int)
 }
 

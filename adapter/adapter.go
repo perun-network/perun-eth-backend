@@ -39,6 +39,8 @@ type liquidityPoolContract interface {
 	Operator(opts *bind.CallOpts) (common.Address, error)
 	TotalAssets(opts *bind.CallOpts) (*big.Int, error)
 	TotalLockedETH(opts *bind.CallOpts) (*big.Int, error)
+	TotalShares(opts *bind.CallOpts) (*big.Int, error)
+	PreviewWithdrawETH(opts *bind.CallOpts, sharesAmount *big.Int) (*big.Int, error)
 }
 
 type adapterBackend interface {
@@ -356,4 +358,26 @@ func (a *LiquidityPoolAdapter) PoolMetadata() (addr common.Address, chainID *big
 		return a.poolAddress, nil
 	}
 	return a.poolAddress, new(big.Int).Set(a.chainID)
+}
+
+// TotalShares returns the total number of LP shares issued by the pool. Combined
+// with SharesOf it lets callers compute an owner's pro-rata fraction of the pool.
+func (a *LiquidityPoolAdapter) TotalShares(ctx context.Context) (*big.Int, error) {
+	shares, err := a.contract.TotalShares(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return nil, fmt.Errorf("%w: totalShares: %v", ErrRetriable, err)
+	}
+	return shares, nil
+}
+
+// PreviewWithdrawETH returns the ETH the contract would pay out for burning the
+// given number of shares. The pool's withdraw reverts if it would touch locked
+// ETH, so what is withdrawable right now is min(PreviewWithdrawETH(shares),
+// WithdrawableETH()).
+func (a *LiquidityPoolAdapter) PreviewWithdrawETH(ctx context.Context, shares *big.Int) (*big.Int, error) {
+	out, err := a.contract.PreviewWithdrawETH(&bind.CallOpts{Context: ctx}, shares)
+	if err != nil {
+		return nil, fmt.Errorf("%w: previewWithdrawETH: %v", ErrRetriable, err)
+	}
+	return out, nil
 }
