@@ -34,8 +34,11 @@ type liquidityPoolContract interface {
 	WithdrawableETH(opts *bind.CallOpts) (*big.Int, error)
 	SharesOf(opts *bind.CallOpts, provider common.Address) (*big.Int, error)
 	LockedByChannel(opts *bind.CallOpts, channelID [32]byte) (*big.Int, error)
+	MinSettlementValue(opts *bind.CallOpts, channelID [32]byte) (*big.Int, error)
+	OperatorBond(opts *bind.CallOpts) (*big.Int, error)
 	FundChannel(opts *bind.TransactOpts, channelID [32]byte, amount *big.Int) (*types.Transaction, error)
 	SettleChannel(opts *bind.TransactOpts, channelID [32]byte) (*types.Transaction, error)
+	BondETH(opts *bind.TransactOpts) (*types.Transaction, error)
 	Operator(opts *bind.CallOpts) (common.Address, error)
 	TotalAssets(opts *bind.CallOpts) (*big.Int, error)
 	TotalLockedETH(opts *bind.CallOpts) (*big.Int, error)
@@ -262,6 +265,20 @@ func (a *LiquidityPoolAdapter) FundChannel(ctx context.Context, channelID [32]by
 		return fmt.Errorf("%w: channel already funded with %s", ErrDeterministic, existing)
 	}
 
+	// Mirror the contract's bond-coverage requirement so an under-bonded
+	// operator fails deterministically instead of burning gas on a revert.
+	bond, err := a.contract.OperatorBond(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return fmt.Errorf("%w: cannot read operator bond: %v", ErrRetriable, err)
+	}
+	locked, err := a.contract.TotalLockedETH(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return fmt.Errorf("%w: cannot read total locked: %v", ErrRetriable, err)
+	}
+	if required := new(big.Int).Add(locked, amount); bond.Cmp(required) < 0 {
+		return fmt.Errorf("%w: bond %s < locked+amount %s - insufficient coverage", ErrDeterministic, bond, required)
+	}
+
 	opts, err := a.newTxOpts(ctx)
 	if err != nil {
 		return classifyEthError(err)
@@ -289,8 +306,12 @@ func (a *LiquidityPoolAdapter) SettleChannel(ctx context.Context, channelID [32]
 	if locked.Sign() == 0 {
 		return fmt.Errorf("%w: channel %x not found in pool", ErrDeterministic, channelID)
 	}
-	if returnAmount.Cmp(locked) < 0 {
-		return fmt.Errorf("%w: returnAmount %s < locked principal %s - contract would revert", ErrDeterministic, returnAmount, locked)
+	minValue, err := a.contract.MinSettlementValue(&bind.CallOpts{Context: ctx}, channelID)
+	if err != nil {
+		return fmt.Errorf("%w: cannot read min settlement value: %v", ErrRetriable, err)
+	}
+	if returnAmount.Cmp(minValue) < 0 {
+		return fmt.Errorf("%w: returnAmount %s < principal plus fee floor %s - contract would revert", ErrDeterministic, returnAmount, minValue)
 	}
 
 	opts, err := a.newTxOpts(ctx)
@@ -322,16 +343,52 @@ func (a *LiquidityPoolAdapter) GetOperator(ctx context.Context) (common.Address,
 }
 
 // GetPoolState returns total assets and locked ETH values for Hub accounting.
-func (a *LiquidityPoolAdapter) GetPoolState(ctx context.Context) (reserve uint64, locked uint64, err error) {
+// Both values are wei-denominated big.Ints: pool sizes routinely exceed the
+// ~18.45 ETH that fits in a uint64 of wei.
+func (a *LiquidityPoolAdapter) GetPoolState(ctx context.Context) (reserve *big.Int, locked *big.Int, err error) {
 	total, err := a.contract.TotalAssets(&bind.CallOpts{Context: ctx})
 	if err != nil {
-		return 0, 0, fmt.Errorf("%w: totalAssets: %v", ErrRetriable, err)
+		return nil, nil, fmt.Errorf("%w: totalAssets: %v", ErrRetriable, err)
 	}
 	lockedBig, err := a.contract.TotalLockedETH(&bind.CallOpts{Context: ctx})
 	if err != nil {
-		return 0, 0, fmt.Errorf("%w: totalLockedETH: %v", ErrRetriable, err)
+		return nil, nil, fmt.Errorf("%w: totalLockedETH: %v", ErrRetriable, err)
 	}
-	return total.Uint64(), lockedBig.Uint64(), nil
+	return total, lockedBig, nil
+}
+
+// OperatorBond returns the ETH collateral the operator has posted in the pool.
+func (a *LiquidityPoolAdapter) OperatorBond(ctx context.Context) (*big.Int, error) {
+	bond, err := a.contract.OperatorBond(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return nil, fmt.Errorf("%w: operatorBond: %v", ErrRetriable, err)
+	}
+	return bond, nil
+}
+
+// BondETH posts amount wei of operator collateral via bondETH(). The tx
+// sender must be the pool operator.
+func (a *LiquidityPoolAdapter) BondETH(ctx context.Context, amount *big.Int) error {
+	if amount == nil || amount.Sign() <= 0 {
+		return fmt.Errorf("%w: bond amount must be > 0", ErrDeterministic)
+	}
+	opts, err := a.newTxOpts(ctx)
+	if err != nil {
+		return classifyEthError(err)
+	}
+	opts.Value = amount
+	tx, err := a.contract.BondETH(opts)
+	if err != nil {
+		return classifyEthError(err)
+	}
+	receipt, err := a.confirmTx(ctx, tx)
+	if err != nil {
+		return fmt.Errorf("%w: tx wait failed: %v", ErrRetriable, err)
+	}
+	if receipt.Status == types.ReceiptStatusFailed {
+		return fmt.Errorf("%w: bondETH reverted tx=%s", ErrContractRevert, tx.Hash())
+	}
+	return nil
 }
 
 // SharesOf returns the LP provider's share balance in the pool.

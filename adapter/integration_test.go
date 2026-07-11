@@ -45,7 +45,8 @@ func setupPool(t *testing.T) (*chtest.SimSetup, common.Address, *liquiditypool.L
 	defer cancel()
 	auth, err := s.CB.NewTransactor(ctx, deployGasLimit, s.TxSender.Account)
 	require.NoError(t, err)
-	addr, tx, _, err := liquiditypool.DeployLiquidityPool(auth, *s.CB, s.TxSender.Account.Address)
+	addr, tx, _, err := liquiditypool.DeployLiquidityPool(
+		auth, *s.CB, s.TxSender.Account.Address, big.NewInt(3600), big.NewInt(10))
 	require.NoError(t, err)
 	_, err = s.CB.ConfirmTransaction(ctx, tx, s.TxSender.Account)
 	require.NoError(t, err)
@@ -58,6 +59,15 @@ func setupPool(t *testing.T) (*chtest.SimSetup, common.Address, *liquiditypool.L
 	require.NoError(t, err)
 	auth.Value = big.NewInt(100)
 	tx, err = pool.Deposit(auth)
+	require.NoError(t, err)
+	_, err = s.CB.ConfirmTransaction(ctx, tx, s.TxSender.Account)
+	require.NoError(t, err)
+
+	// Post operator bond so fundChannel passes the coverage requirement.
+	auth, err = s.CB.NewTransactor(ctx, integrationGasLimit, s.TxSender.Account)
+	require.NoError(t, err)
+	auth.Value = big.NewInt(1000)
+	tx, err = pool.BondETH(auth)
 	require.NoError(t, err)
 	_, err = s.CB.ConfirmTransaction(ctx, tx, s.TxSender.Account)
 	require.NoError(t, err)

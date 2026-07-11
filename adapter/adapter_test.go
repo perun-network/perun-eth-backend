@@ -23,6 +23,8 @@ type mockContract struct {
 	locked          *big.Int
 	totalAssets     *big.Int
 	totalLocked     *big.Int
+	bond            *big.Int
+	minSettle       *big.Int
 	operator        common.Address
 
 	withdrawErr    error
@@ -32,14 +34,19 @@ type mockContract struct {
 	lockedErr      error
 	fundErr        error
 	settleErr      error
+	bondCallErr    error
+	minSettleErr   error
+	bondTxErr      error
 	totalErr       error
 	lockedTErr     error
 	opErr          error
 
 	fundTx   *types.Transaction
 	settleTx *types.Transaction
+	bondTx   *types.Transaction
 
 	lastSettleValue *big.Int
+	lastBondValue   *big.Int
 }
 
 func (m *mockContract) WithdrawableETH(_ *bind.CallOpts) (*big.Int, error) {
@@ -94,6 +101,40 @@ func (m *mockContract) SettleChannel(opts *bind.TransactOpts, _ [32]byte) (*type
 	return m.settleTx, nil
 }
 
+// OperatorBond defaults to an ample bond when unset so pre-existing funding
+// tests exercise their own concern, not coverage.
+func (m *mockContract) OperatorBond(_ *bind.CallOpts) (*big.Int, error) {
+	if m.bondCallErr != nil {
+		return nil, m.bondCallErr
+	}
+	if m.bond == nil {
+		return new(big.Int).Lsh(big.NewInt(1), 128), nil
+	}
+	return new(big.Int).Set(m.bond), nil
+}
+
+// MinSettlementValue defaults to the locked principal (a zero fee floor)
+// when unset.
+func (m *mockContract) MinSettlementValue(_ *bind.CallOpts, _ [32]byte) (*big.Int, error) {
+	if m.minSettleErr != nil {
+		return nil, m.minSettleErr
+	}
+	if m.minSettle == nil {
+		return new(big.Int).Set(m.locked), nil
+	}
+	return new(big.Int).Set(m.minSettle), nil
+}
+
+func (m *mockContract) BondETH(opts *bind.TransactOpts) (*types.Transaction, error) {
+	if opts.Value != nil {
+		m.lastBondValue = new(big.Int).Set(opts.Value)
+	}
+	if m.bondTxErr != nil {
+		return nil, m.bondTxErr
+	}
+	return m.bondTx, nil
+}
+
 func (m *mockContract) Operator(_ *bind.CallOpts) (common.Address, error) {
 	if m.opErr != nil {
 		return common.Address{}, m.opErr
@@ -111,6 +152,9 @@ func (m *mockContract) TotalAssets(_ *bind.CallOpts) (*big.Int, error) {
 func (m *mockContract) TotalLockedETH(_ *bind.CallOpts) (*big.Int, error) {
 	if m.lockedTErr != nil {
 		return nil, m.lockedTErr
+	}
+	if m.totalLocked == nil {
+		return big.NewInt(0), nil
 	}
 	return new(big.Int).Set(m.totalLocked), nil
 }
@@ -196,6 +240,55 @@ func TestSettleChannel_BelowPrincipal(t *testing.T) {
 	require.ErrorIs(t, err, ErrDeterministic)
 }
 
+func TestSettleChannel_BelowFeeFloor(t *testing.T) {
+	// Principal covered but the on-chain fee floor is not.
+	m := &mockContract{locked: big.NewInt(11), minSettle: big.NewInt(12)}
+	a := newTestAdapter(nil, m, nil, nil)
+
+	err := a.SettleChannel(context.Background(), [32]byte{4}, big.NewInt(11))
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrDeterministic)
+}
+
+func TestFundChannel_InsufficientBondCoverage(t *testing.T) {
+	m := &mockContract{
+		withdrawable: big.NewInt(100),
+		locked:       big.NewInt(0),
+		totalLocked:  big.NewInt(30),
+		bond:         big.NewInt(40),
+	}
+	a := newTestAdapter(nil, m, nil, nil)
+
+	// 30 locked + 11 requested = 41 > 40 bonded.
+	err := a.FundChannel(context.Background(), [32]byte{5}, big.NewInt(11))
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrDeterministic)
+	require.Contains(t, err.Error(), "insufficient coverage")
+}
+
+func TestBondETH_HappyPath(t *testing.T) {
+	m := &mockContract{
+		bondTx: fakeTx([]byte{0x0e, 0xf1, 0x1e, 0x5c}, big.NewInt(50)),
+	}
+	a := newTestAdapter(nil, m, func(context.Context) (*bind.TransactOpts, error) {
+		return &bind.TransactOpts{}, nil
+	}, func(_ context.Context, tx *types.Transaction) (*types.Receipt, error) {
+		return &types.Receipt{Status: types.ReceiptStatusSuccessful}, nil
+	})
+
+	err := a.BondETH(context.Background(), big.NewInt(50))
+	require.NoError(t, err)
+	require.Equal(t, big.NewInt(50), m.lastBondValue)
+}
+
+func TestBondETH_RejectsNonPositive(t *testing.T) {
+	a := newTestAdapter(nil, &mockContract{}, nil, nil)
+
+	err := a.BondETH(context.Background(), big.NewInt(0))
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrDeterministic)
+}
+
 func TestSettleChannel_ChannelNotFound(t *testing.T) {
 	m := &mockContract{locked: big.NewInt(0)}
 	a := newTestAdapter(nil, m, nil, nil)
@@ -211,8 +304,24 @@ func TestGetPoolState_HappyPath(t *testing.T) {
 
 	reserve, locked, err := a.GetPoolState(context.Background())
 	require.NoError(t, err)
-	require.EqualValues(t, 123, reserve)
-	require.EqualValues(t, 45, locked)
+	require.Equal(t, big.NewInt(123), reserve)
+	require.Equal(t, big.NewInt(45), locked)
+}
+
+func TestGetPoolState_BeyondUint64(t *testing.T) {
+	// 100 ETH = 1e20 wei exceeds uint64 (~18.45 ETH); values must pass
+	// through untruncated.
+	total, ok := new(big.Int).SetString("100000000000000000000", 10)
+	require.True(t, ok)
+	locked, ok := new(big.Int).SetString("20000000000000000000", 10)
+	require.True(t, ok)
+	m := &mockContract{totalAssets: total, totalLocked: locked}
+	a := newTestAdapter(nil, m, nil, nil)
+
+	gotReserve, gotLocked, err := a.GetPoolState(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, gotReserve.Cmp(total))
+	require.Zero(t, gotLocked.Cmp(locked))
 }
 
 func TestGetOperator_Delegated(t *testing.T) {
