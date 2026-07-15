@@ -39,6 +39,7 @@ type liquidityPoolContract interface {
 	FundChannel(opts *bind.TransactOpts, channelID [32]byte, amount *big.Int) (*types.Transaction, error)
 	SettleChannel(opts *bind.TransactOpts, channelID [32]byte) (*types.Transaction, error)
 	BondETH(opts *bind.TransactOpts) (*types.Transaction, error)
+	DepositFor(opts *bind.TransactOpts, beneficiary common.Address) (*types.Transaction, error)
 	Operator(opts *bind.CallOpts) (common.Address, error)
 	TotalAssets(opts *bind.CallOpts) (*big.Int, error)
 	TotalLockedETH(opts *bind.CallOpts) (*big.Int, error)
@@ -387,6 +388,36 @@ func (a *LiquidityPoolAdapter) BondETH(ctx context.Context, amount *big.Int) err
 	}
 	if receipt.Status == types.ReceiptStatusFailed {
 		return fmt.Errorf("%w: bondETH reverted tx=%s", ErrContractRevert, tx.Hash())
+	}
+	return nil
+}
+
+// DepositFor deposits amount wei into the pool and mints the resulting shares
+// to beneficiary rather than to the tx sender. Used to credit a CKB LP cell's
+// traded countervalue to that cell's owner-designated beneficiary: the sender
+// funds the deposit but keeps no claim on it.
+func (a *LiquidityPoolAdapter) DepositFor(ctx context.Context, beneficiary common.Address, amount *big.Int) error {
+	if amount == nil || amount.Sign() <= 0 {
+		return fmt.Errorf("%w: deposit amount must be > 0", ErrDeterministic)
+	}
+	if beneficiary == (common.Address{}) {
+		return fmt.Errorf("%w: beneficiary must not be the zero address", ErrDeterministic)
+	}
+	opts, err := a.newTxOpts(ctx)
+	if err != nil {
+		return classifyEthError(err)
+	}
+	opts.Value = amount
+	tx, err := a.contract.DepositFor(opts, beneficiary)
+	if err != nil {
+		return classifyEthError(err)
+	}
+	receipt, err := a.confirmTx(ctx, tx)
+	if err != nil {
+		return fmt.Errorf("%w: tx wait failed: %v", ErrRetriable, err)
+	}
+	if receipt.Status == types.ReceiptStatusFailed {
+		return fmt.Errorf("%w: depositFor reverted tx=%s", ErrContractRevert, tx.Hash())
 	}
 	return nil
 }

@@ -41,12 +41,16 @@ type mockContract struct {
 	lockedTErr     error
 	opErr          error
 
-	fundTx   *types.Transaction
-	settleTx *types.Transaction
-	bondTx   *types.Transaction
+	fundTx     *types.Transaction
+	settleTx   *types.Transaction
+	bondTx     *types.Transaction
+	depositTx  *types.Transaction
+	depositErr error
 
-	lastSettleValue *big.Int
-	lastBondValue   *big.Int
+	lastSettleValue      *big.Int
+	lastBondValue        *big.Int
+	lastDepositValue     *big.Int
+	lastDepositRecipient common.Address
 }
 
 func (m *mockContract) WithdrawableETH(_ *bind.CallOpts) (*big.Int, error) {
@@ -133,6 +137,17 @@ func (m *mockContract) BondETH(opts *bind.TransactOpts) (*types.Transaction, err
 		return nil, m.bondTxErr
 	}
 	return m.bondTx, nil
+}
+
+func (m *mockContract) DepositFor(opts *bind.TransactOpts, beneficiary common.Address) (*types.Transaction, error) {
+	if opts.Value != nil {
+		m.lastDepositValue = new(big.Int).Set(opts.Value)
+	}
+	m.lastDepositRecipient = beneficiary
+	if m.depositErr != nil {
+		return nil, m.depositErr
+	}
+	return m.depositTx, nil
 }
 
 func (m *mockContract) Operator(_ *bind.CallOpts) (common.Address, error) {
@@ -287,6 +302,60 @@ func TestBondETH_RejectsNonPositive(t *testing.T) {
 	err := a.BondETH(context.Background(), big.NewInt(0))
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrDeterministic)
+}
+
+// TestDepositFor_HappyPath also locks the wei range: a conversion credits the
+// full countervalue, which for a 100-ETH-scale pool exceeds 2^64.
+func TestDepositFor_HappyPath(t *testing.T) {
+	amount, ok := new(big.Int).SetString("100000000000000000000", 10) // 100 ETH
+	require.True(t, ok)
+	require.Positive(t, amount.Cmp(new(big.Int).Lsh(big.NewInt(1), 64)))
+
+	beneficiary := common.HexToAddress("0xA298Fc05bccff341f340a11FffA30567a00e651f")
+	m := &mockContract{
+		depositTx: fakeTx([]byte{0x2f, 0x4f, 0x21, 0xe2}, amount),
+	}
+	a := newTestAdapter(nil, m, func(context.Context) (*bind.TransactOpts, error) {
+		return &bind.TransactOpts{}, nil
+	}, func(_ context.Context, tx *types.Transaction) (*types.Receipt, error) {
+		return &types.Receipt{Status: types.ReceiptStatusSuccessful}, nil
+	})
+
+	err := a.DepositFor(context.Background(), beneficiary, amount)
+	require.NoError(t, err)
+	require.Equal(t, amount, m.lastDepositValue)
+	require.Equal(t, beneficiary, m.lastDepositRecipient)
+}
+
+func TestDepositFor_RejectsNonPositive(t *testing.T) {
+	a := newTestAdapter(nil, &mockContract{}, nil, nil)
+
+	err := a.DepositFor(context.Background(), common.HexToAddress("0x1"), big.NewInt(0))
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrDeterministic)
+}
+
+func TestDepositFor_RejectsZeroBeneficiary(t *testing.T) {
+	a := newTestAdapter(nil, &mockContract{}, nil, nil)
+
+	// The contract reverts on the zero beneficiary; fail before spending gas.
+	err := a.DepositFor(context.Background(), common.Address{}, big.NewInt(10))
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrDeterministic)
+}
+
+func TestDepositFor_RevertedTx(t *testing.T) {
+	m := &mockContract{
+		depositTx: fakeTx([]byte{0x2f, 0x4f, 0x21, 0xe2}, big.NewInt(10)),
+	}
+	a := newTestAdapter(nil, m, func(context.Context) (*bind.TransactOpts, error) {
+		return &bind.TransactOpts{}, nil
+	}, func(_ context.Context, tx *types.Transaction) (*types.Receipt, error) {
+		return &types.Receipt{Status: types.ReceiptStatusFailed}, nil
+	})
+
+	err := a.DepositFor(context.Background(), common.HexToAddress("0x1"), big.NewInt(10))
+	require.ErrorIs(t, err, ErrContractRevert)
 }
 
 func TestSettleChannel_ChannelNotFound(t *testing.T) {
