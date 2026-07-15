@@ -47,6 +47,12 @@ type mockContract struct {
 	depositTx  *types.Transaction
 	depositErr error
 
+	// fundTransientErrs makes FundChannel reject the submission with a
+	// transient mempool error this many times before accepting it, so the
+	// send-retry path can be exercised without a node.
+	fundTransientErrs int
+	fundCalls         int
+
 	lastSettleValue      *big.Int
 	lastBondValue        *big.Int
 	lastDepositValue     *big.Int
@@ -89,6 +95,11 @@ func (m *mockContract) LockedByChannel(_ *bind.CallOpts, _ [32]byte) (*big.Int, 
 }
 
 func (m *mockContract) FundChannel(_ *bind.TransactOpts, _ [32]byte, _ *big.Int) (*types.Transaction, error) {
+	m.fundCalls++
+	if m.fundTransientErrs > 0 {
+		m.fundTransientErrs--
+		return nil, errors.New("transaction underpriced")
+	}
 	if m.fundErr != nil {
 		return nil, m.fundErr
 	}

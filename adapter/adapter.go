@@ -16,6 +16,7 @@ package adapter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -107,6 +108,62 @@ type LiquidityPoolAdapter struct {
 	retryInitial time.Duration
 	retryMax     time.Duration
 	finality     uint64
+}
+
+// sendTx builds fresh TransactOpts and submits one transaction via send,
+// retrying while the node rejects it for a transient mempool/nonce condition
+// (see isTransientSubmissionError). Each attempt rebuilds the opts, so a retry
+// picks up a fresh nonce and gas price — retrying with the same opts would just
+// reproduce "underpriced".
+//
+// Only submission is retried. Once a transaction is accepted, confirmation and
+// revert handling stay with the caller: resending a mined tx would execute the
+// call twice.
+//
+// Backoff starts at retryInitial and doubles up to retryMax, bounded by ctx.
+func (a *LiquidityPoolAdapter) sendTx(
+	ctx context.Context,
+	mutate func(*bind.TransactOpts),
+	send func(*bind.TransactOpts) (*types.Transaction, error),
+) (*types.Transaction, error) {
+	delay := a.retryInitial
+	if delay <= 0 {
+		delay = defaultRetryInitial
+	}
+	maxDelay := a.retryMax
+	if maxDelay <= 0 {
+		maxDelay = defaultRetryMax
+	}
+
+	for {
+		opts, err := a.newTxOpts(ctx)
+		if err != nil {
+			return nil, classifyEthError(err)
+		}
+		if mutate != nil {
+			mutate(opts)
+		}
+		tx, err := send(opts)
+		if err == nil {
+			return tx, nil
+		}
+		classified := classifyEthError(err)
+		if !errors.Is(classified, ErrRetriable) {
+			return nil, classified
+		}
+
+		select {
+		case <-ctx.Done():
+			// Report what we were retrying on, not just that time ran out.
+			return nil, fmt.Errorf("%w: %v (last submission error: %v)", ErrRetriable, ctx.Err(), classified)
+		case <-time.After(delay):
+		}
+		if delay < maxDelay {
+			if delay *= 2; delay > maxDelay {
+				delay = maxDelay
+			}
+		}
+	}
 }
 
 // NewLiquidityPoolAdapter creates a new adapter over a deployed LiquidityPool contract.
@@ -280,13 +337,11 @@ func (a *LiquidityPoolAdapter) FundChannel(ctx context.Context, channelID [32]by
 		return fmt.Errorf("%w: bond %s < locked+amount %s - insufficient coverage", ErrDeterministic, bond, required)
 	}
 
-	opts, err := a.newTxOpts(ctx)
+	tx, err := a.sendTx(ctx, nil, func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		return a.contract.FundChannel(opts, channelID, amount)
+	})
 	if err != nil {
-		return classifyEthError(err)
-	}
-	tx, err := a.contract.FundChannel(opts, channelID, amount)
-	if err != nil {
-		return classifyEthError(err)
+		return err
 	}
 	receipt, err := a.confirmTx(ctx, tx)
 	if err != nil {
@@ -315,14 +370,13 @@ func (a *LiquidityPoolAdapter) SettleChannel(ctx context.Context, channelID [32]
 		return fmt.Errorf("%w: returnAmount %s < principal plus fee floor %s - contract would revert", ErrDeterministic, returnAmount, minValue)
 	}
 
-	opts, err := a.newTxOpts(ctx)
+	tx, err := a.sendTx(ctx,
+		func(opts *bind.TransactOpts) { opts.Value = returnAmount },
+		func(opts *bind.TransactOpts) (*types.Transaction, error) {
+			return a.contract.SettleChannel(opts, channelID)
+		})
 	if err != nil {
-		return classifyEthError(err)
-	}
-	opts.Value = returnAmount
-	tx, err := a.contract.SettleChannel(opts, channelID)
-	if err != nil {
-		return classifyEthError(err)
+		return err
 	}
 	receipt, err := a.confirmTx(ctx, tx)
 	if err != nil {
@@ -373,14 +427,13 @@ func (a *LiquidityPoolAdapter) BondETH(ctx context.Context, amount *big.Int) err
 	if amount == nil || amount.Sign() <= 0 {
 		return fmt.Errorf("%w: bond amount must be > 0", ErrDeterministic)
 	}
-	opts, err := a.newTxOpts(ctx)
+	tx, err := a.sendTx(ctx,
+		func(opts *bind.TransactOpts) { opts.Value = amount },
+		func(opts *bind.TransactOpts) (*types.Transaction, error) {
+			return a.contract.BondETH(opts)
+		})
 	if err != nil {
-		return classifyEthError(err)
-	}
-	opts.Value = amount
-	tx, err := a.contract.BondETH(opts)
-	if err != nil {
-		return classifyEthError(err)
+		return err
 	}
 	receipt, err := a.confirmTx(ctx, tx)
 	if err != nil {
@@ -403,14 +456,13 @@ func (a *LiquidityPoolAdapter) DepositFor(ctx context.Context, beneficiary commo
 	if beneficiary == (common.Address{}) {
 		return fmt.Errorf("%w: beneficiary must not be the zero address", ErrDeterministic)
 	}
-	opts, err := a.newTxOpts(ctx)
+	tx, err := a.sendTx(ctx,
+		func(opts *bind.TransactOpts) { opts.Value = amount },
+		func(opts *bind.TransactOpts) (*types.Transaction, error) {
+			return a.contract.DepositFor(opts, beneficiary)
+		})
 	if err != nil {
-		return classifyEthError(err)
-	}
-	opts.Value = amount
-	tx, err := a.contract.DepositFor(opts, beneficiary)
-	if err != nil {
-		return classifyEthError(err)
+		return err
 	}
 	receipt, err := a.confirmTx(ctx, tx)
 	if err != nil {

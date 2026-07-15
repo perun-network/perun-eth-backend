@@ -37,13 +37,52 @@ func classifyEthError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if isRPCTimeout(err) || isConnectionRefused(err) || cherrors.IsChainNotReachableError(err) {
+	if isRPCTimeout(err) || isConnectionRefused(err) || cherrors.IsChainNotReachableError(err) ||
+		isTransientSubmissionError(err) {
 		return fmt.Errorf("%w: %v", ErrRetriable, err)
 	}
 	if isRevertError(err) || ch.IsErrTxFailed(err) {
 		return fmt.Errorf("%w: %v", ErrContractRevert, err)
 	}
 	return fmt.Errorf("%w: %v", ErrDeterministic, err)
+}
+
+// isTransientSubmissionError reports whether the node rejected the transaction
+// for a mempool/nonce condition rather than a permanent input or state problem.
+//
+// These describe the state of the tx pool at one instant, not the call: the same
+// transaction, rebuilt with a fresh nonce and gas price, succeeds. Classifying
+// them as deterministic makes a caller abandon work that would have gone through
+// — which is how a pool-funded swap ends up rejected because an unrelated
+// transaction from the same operator key was still in flight.
+func isTransientSubmissionError(err error) bool {
+	msg := strings.ToLower(err.Error())
+	for _, m := range []string{
+		// Gas price under the pool's minimum, or under the +10% bump a
+		// replacement needs. Both clear once the pending tx lands.
+		"underpriced",
+		// The nonce was consumed between building and sending the tx.
+		"nonce too low",
+		"nonce is too low",
+		// Same tx already queued/mined — a rebuild resolves it.
+		"already known",
+		"known transaction",
+		"already imported",
+		// Pool is full/busy right now.
+		"txpool is full",
+		"transaction pool is full",
+		// EIP-1559 fee cap below the current base fee.
+		"fee cap less than block base fee",
+		"max fee per gas less than block base fee",
+		// Explicit "retry later" from the node.
+		"replacement transaction",
+		"transaction pool limit",
+	} {
+		if strings.Contains(msg, m) {
+			return true
+		}
+	}
+	return false
 }
 
 func isRPCTimeout(err error) bool {
