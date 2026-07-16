@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//nolint:testpackage // white-box: exercises unexported retry/classify helpers
 package adapter
 
 import (
@@ -69,7 +70,7 @@ func TestFundChannelRetriesTransientSubmissionRejection(t *testing.T) {
 	}
 
 	optsBuilt := 0
-	a := newTestAdapter(nil, m, func(context.Context) (*bind.TransactOpts, error) {
+	a := newTestAdapter(m, func(context.Context) (*bind.TransactOpts, error) {
 		optsBuilt++
 		return &bind.TransactOpts{}, nil
 	}, func(_ context.Context, _ *types.Transaction) (*types.Receipt, error) {
@@ -90,7 +91,7 @@ func TestFundChannelDoesNotRetryDeterministicRejection(t *testing.T) {
 		locked:       big.NewInt(0),
 		fundErr:      errors.New("invalid opcode"),
 	}
-	a := newTestAdapter(nil, m, func(context.Context) (*bind.TransactOpts, error) {
+	a := newTestAdapter(m, func(context.Context) (*bind.TransactOpts, error) {
 		return &bind.TransactOpts{}, nil
 	}, nil)
 
@@ -108,7 +109,7 @@ func TestFundChannelRetryHonoursContextDeadline(t *testing.T) {
 		fundTx:            fakeTx([]byte{0x01}, big.NewInt(0)),
 		fundTransientErrs: 1 << 30, // never accepts
 	}
-	a := newTestAdapter(nil, m, func(context.Context) (*bind.TransactOpts, error) {
+	a := newTestAdapter(m, func(context.Context) (*bind.TransactOpts, error) {
 		return &bind.TransactOpts{}, nil
 	}, nil)
 

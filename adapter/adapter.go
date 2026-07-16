@@ -31,6 +31,10 @@ import (
 	"github.com/perun-network/perun-eth-backend/channel"
 )
 
+// liquidityPoolContract mirrors the generated LiquidityPool binding 1:1, so its
+// method count tracks the on-chain ABI rather than any design choice here.
+//
+//nolint:interfacebloat // intentionally mirrors the on-chain LiquidityPool ABI
 type liquidityPoolContract interface {
 	WithdrawableETH(opts *bind.CallOpts) (*big.Int, error)
 	SharesOf(opts *bind.CallOpts, provider common.Address) (*big.Int, error)
@@ -58,8 +62,10 @@ type adapterBackend interface {
 	TxFinalityDepth() uint64
 }
 
-type txOptsFactory func(ctx context.Context) (*bind.TransactOpts, error)
-type txConfirmer func(ctx context.Context, tx *types.Transaction) (*types.Receipt, error)
+type (
+	txOptsFactory func(ctx context.Context) (*bind.TransactOpts, error)
+	txConfirmer   func(ctx context.Context, tx *types.Transaction) (*types.Receipt, error)
+)
 
 // AdapterOption configures runtime behavior of the adapter.
 type AdapterOption func(*adapterConfig)
@@ -76,13 +82,13 @@ const (
 )
 
 // WithRetryBackoff configures reconnect backoff bounds for event subscriptions.
-func WithRetryBackoff(initial, max time.Duration) AdapterOption {
+func WithRetryBackoff(initial, maximum time.Duration) AdapterOption {
 	return func(c *adapterConfig) {
 		if initial > 0 {
 			c.retryInitial = initial
 		}
-		if max > 0 {
-			c.retryMax = max
+		if maximum > 0 {
+			c.retryMax = maximum
 		}
 	}
 }
@@ -220,13 +226,11 @@ func NewLiquidityPoolAdapter(
 }
 
 func newTestAdapter(
-	backend adapterBackend,
 	contract liquidityPoolContract,
 	newTxOpts txOptsFactory,
 	confirm txConfirmer,
 ) *LiquidityPoolAdapter {
 	return &LiquidityPoolAdapter{
-		backend:      backend,
 		contract:     contract,
 		newTxOpts:    newTxOpts,
 		confirmTx:    confirm,

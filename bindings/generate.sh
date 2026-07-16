@@ -19,7 +19,9 @@ set -e
 # Define ABIGEN and SOLC default values.
 ABIGEN="${ABIGEN-abigen}"
 SOLC="${SOLC-solc}"
-SOLC_EVM_VERSION="${SOLC_EVM_VERSION-paris}"
+# "london" is the newest EVM version the pinned solc 0.8.15 accepts; "paris"
+# was only added in solc 0.8.18 and makes the pinned toolchain abort.
+SOLC_EVM_VERSION="${SOLC_EVM_VERSION-london}"
 
 echo 'Please ensure that solc v0.8.15+ and abigen v1.10.18+ are installed.'
 

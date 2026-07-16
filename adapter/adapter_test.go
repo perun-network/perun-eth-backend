@@ -1,3 +1,18 @@
+// Copyright 2026 - See NOTICE file for copyright holders.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//nolint:testpackage // white-box: exercises unexported helpers and mocks
 package adapter
 
 import (
@@ -205,7 +220,7 @@ func TestFundChannel_HappyPath(t *testing.T) {
 	}
 
 	var captured *types.Transaction
-	a := newTestAdapter(nil, m, func(context.Context) (*bind.TransactOpts, error) {
+	a := newTestAdapter(m, func(context.Context) (*bind.TransactOpts, error) {
 		return &bind.TransactOpts{}, nil
 	}, func(_ context.Context, tx *types.Transaction) (*types.Receipt, error) {
 		captured = tx
@@ -220,7 +235,7 @@ func TestFundChannel_HappyPath(t *testing.T) {
 
 func TestFundChannel_AlreadyFunded(t *testing.T) {
 	m := &mockContract{withdrawable: big.NewInt(100), locked: big.NewInt(1)}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	err := a.FundChannel(context.Background(), [32]byte{2}, big.NewInt(10))
 	require.Error(t, err)
@@ -229,7 +244,7 @@ func TestFundChannel_AlreadyFunded(t *testing.T) {
 
 func TestFundChannel_InsufficientFree(t *testing.T) {
 	m := &mockContract{withdrawable: big.NewInt(9), locked: big.NewInt(0)}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	err := a.FundChannel(context.Background(), [32]byte{2}, big.NewInt(10))
 	require.Error(t, err)
@@ -243,7 +258,7 @@ func TestSettleChannel_HappyPath(t *testing.T) {
 	}
 
 	var captured *types.Transaction
-	a := newTestAdapter(nil, m, func(context.Context) (*bind.TransactOpts, error) {
+	a := newTestAdapter(m, func(context.Context) (*bind.TransactOpts, error) {
 		return &bind.TransactOpts{}, nil
 	}, func(_ context.Context, tx *types.Transaction) (*types.Receipt, error) {
 		captured = tx
@@ -259,7 +274,7 @@ func TestSettleChannel_HappyPath(t *testing.T) {
 
 func TestSettleChannel_BelowPrincipal(t *testing.T) {
 	m := &mockContract{locked: big.NewInt(11)}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	err := a.SettleChannel(context.Background(), [32]byte{4}, big.NewInt(10))
 	require.Error(t, err)
@@ -269,7 +284,7 @@ func TestSettleChannel_BelowPrincipal(t *testing.T) {
 func TestSettleChannel_BelowFeeFloor(t *testing.T) {
 	// Principal covered but the on-chain fee floor is not.
 	m := &mockContract{locked: big.NewInt(11), minSettle: big.NewInt(12)}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	err := a.SettleChannel(context.Background(), [32]byte{4}, big.NewInt(11))
 	require.Error(t, err)
@@ -283,7 +298,7 @@ func TestFundChannel_InsufficientBondCoverage(t *testing.T) {
 		totalLocked:  big.NewInt(30),
 		bond:         big.NewInt(40),
 	}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	// 30 locked + 11 requested = 41 > 40 bonded.
 	err := a.FundChannel(context.Background(), [32]byte{5}, big.NewInt(11))
@@ -296,7 +311,7 @@ func TestBondETH_HappyPath(t *testing.T) {
 	m := &mockContract{
 		bondTx: fakeTx([]byte{0x0e, 0xf1, 0x1e, 0x5c}, big.NewInt(50)),
 	}
-	a := newTestAdapter(nil, m, func(context.Context) (*bind.TransactOpts, error) {
+	a := newTestAdapter(m, func(context.Context) (*bind.TransactOpts, error) {
 		return &bind.TransactOpts{}, nil
 	}, func(_ context.Context, tx *types.Transaction) (*types.Receipt, error) {
 		return &types.Receipt{Status: types.ReceiptStatusSuccessful}, nil
@@ -308,7 +323,7 @@ func TestBondETH_HappyPath(t *testing.T) {
 }
 
 func TestBondETH_RejectsNonPositive(t *testing.T) {
-	a := newTestAdapter(nil, &mockContract{}, nil, nil)
+	a := newTestAdapter(&mockContract{}, nil, nil)
 
 	err := a.BondETH(context.Background(), big.NewInt(0))
 	require.Error(t, err)
@@ -326,7 +341,7 @@ func TestDepositFor_HappyPath(t *testing.T) {
 	m := &mockContract{
 		depositTx: fakeTx([]byte{0x2f, 0x4f, 0x21, 0xe2}, amount),
 	}
-	a := newTestAdapter(nil, m, func(context.Context) (*bind.TransactOpts, error) {
+	a := newTestAdapter(m, func(context.Context) (*bind.TransactOpts, error) {
 		return &bind.TransactOpts{}, nil
 	}, func(_ context.Context, tx *types.Transaction) (*types.Receipt, error) {
 		return &types.Receipt{Status: types.ReceiptStatusSuccessful}, nil
@@ -339,7 +354,7 @@ func TestDepositFor_HappyPath(t *testing.T) {
 }
 
 func TestDepositFor_RejectsNonPositive(t *testing.T) {
-	a := newTestAdapter(nil, &mockContract{}, nil, nil)
+	a := newTestAdapter(&mockContract{}, nil, nil)
 
 	err := a.DepositFor(context.Background(), common.HexToAddress("0x1"), big.NewInt(0))
 	require.Error(t, err)
@@ -347,7 +362,7 @@ func TestDepositFor_RejectsNonPositive(t *testing.T) {
 }
 
 func TestDepositFor_RejectsZeroBeneficiary(t *testing.T) {
-	a := newTestAdapter(nil, &mockContract{}, nil, nil)
+	a := newTestAdapter(&mockContract{}, nil, nil)
 
 	// The contract reverts on the zero beneficiary; fail before spending gas.
 	err := a.DepositFor(context.Background(), common.Address{}, big.NewInt(10))
@@ -359,7 +374,7 @@ func TestDepositFor_RevertedTx(t *testing.T) {
 	m := &mockContract{
 		depositTx: fakeTx([]byte{0x2f, 0x4f, 0x21, 0xe2}, big.NewInt(10)),
 	}
-	a := newTestAdapter(nil, m, func(context.Context) (*bind.TransactOpts, error) {
+	a := newTestAdapter(m, func(context.Context) (*bind.TransactOpts, error) {
 		return &bind.TransactOpts{}, nil
 	}, func(_ context.Context, tx *types.Transaction) (*types.Receipt, error) {
 		return &types.Receipt{Status: types.ReceiptStatusFailed}, nil
@@ -371,7 +386,7 @@ func TestDepositFor_RevertedTx(t *testing.T) {
 
 func TestSettleChannel_ChannelNotFound(t *testing.T) {
 	m := &mockContract{locked: big.NewInt(0)}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	err := a.SettleChannel(context.Background(), [32]byte{4}, big.NewInt(10))
 	require.Error(t, err)
@@ -380,7 +395,7 @@ func TestSettleChannel_ChannelNotFound(t *testing.T) {
 
 func TestGetPoolState_HappyPath(t *testing.T) {
 	m := &mockContract{totalAssets: big.NewInt(123), totalLocked: big.NewInt(45)}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	reserve, locked, err := a.GetPoolState(context.Background())
 	require.NoError(t, err)
@@ -396,7 +411,7 @@ func TestGetPoolState_BeyondUint64(t *testing.T) {
 	locked, ok := new(big.Int).SetString("20000000000000000000", 10)
 	require.True(t, ok)
 	m := &mockContract{totalAssets: total, totalLocked: locked}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	gotReserve, gotLocked, err := a.GetPoolState(context.Background())
 	require.NoError(t, err)
@@ -407,7 +422,7 @@ func TestGetPoolState_BeyondUint64(t *testing.T) {
 func TestGetOperator_Delegated(t *testing.T) {
 	want := common.HexToAddress("0x1000")
 	m := &mockContract{operator: want}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	got, err := a.GetOperator(context.Background())
 	require.NoError(t, err)
@@ -416,7 +431,7 @@ func TestGetOperator_Delegated(t *testing.T) {
 
 func TestSharesOf_HappyPath(t *testing.T) {
 	m := &mockContract{shares: big.NewInt(777)}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	got, err := a.SharesOf(context.Background(), common.HexToAddress("0xABCD"))
 	require.NoError(t, err)
@@ -425,7 +440,7 @@ func TestSharesOf_HappyPath(t *testing.T) {
 
 func TestSharesOf_RetriableOnError(t *testing.T) {
 	m := &mockContract{sharesErr: errors.New("node down")}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	_, err := a.SharesOf(context.Background(), common.HexToAddress("0xABCD"))
 	require.Error(t, err)
@@ -434,7 +449,7 @@ func TestSharesOf_RetriableOnError(t *testing.T) {
 
 func TestWithdrawableETH_HappyPath(t *testing.T) {
 	m := &mockContract{withdrawable: big.NewInt(555)}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	got, err := a.WithdrawableETH(context.Background())
 	require.NoError(t, err)
@@ -443,7 +458,7 @@ func TestWithdrawableETH_HappyPath(t *testing.T) {
 
 func TestWithdrawableETH_RetriableOnError(t *testing.T) {
 	m := &mockContract{withdrawErr: errors.New("node down")}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	_, err := a.WithdrawableETH(context.Background())
 	require.Error(t, err)
@@ -452,7 +467,7 @@ func TestWithdrawableETH_RetriableOnError(t *testing.T) {
 
 func TestTotalShares_HappyPath(t *testing.T) {
 	m := &mockContract{totalShares: big.NewInt(1000)}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	got, err := a.TotalShares(context.Background())
 	require.NoError(t, err)
@@ -461,7 +476,7 @@ func TestTotalShares_HappyPath(t *testing.T) {
 
 func TestTotalShares_RetriableOnError(t *testing.T) {
 	m := &mockContract{totalSharesErr: errors.New("node down")}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	_, err := a.TotalShares(context.Background())
 	require.Error(t, err)
@@ -470,7 +485,7 @@ func TestTotalShares_RetriableOnError(t *testing.T) {
 
 func TestPreviewWithdrawETH_HappyPath(t *testing.T) {
 	m := &mockContract{previewWithdraw: big.NewInt(250)}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	got, err := a.PreviewWithdrawETH(context.Background(), big.NewInt(100))
 	require.NoError(t, err)
@@ -479,7 +494,7 @@ func TestPreviewWithdrawETH_HappyPath(t *testing.T) {
 
 func TestPreviewWithdrawETH_RetriableOnError(t *testing.T) {
 	m := &mockContract{previewErr: errors.New("node down")}
-	a := newTestAdapter(nil, m, nil, nil)
+	a := newTestAdapter(m, nil, nil)
 
 	_, err := a.PreviewWithdrawETH(context.Background(), big.NewInt(100))
 	require.Error(t, err)
@@ -488,7 +503,7 @@ func TestPreviewWithdrawETH_RetriableOnError(t *testing.T) {
 
 func TestPoolMetadata(t *testing.T) {
 	addr := common.HexToAddress("0xABCD")
-	a := newTestAdapter(nil, &mockContract{}, nil, nil)
+	a := newTestAdapter(&mockContract{}, nil, nil)
 	a.poolAddress = addr
 	a.chainID = big.NewInt(1337)
 
@@ -503,7 +518,7 @@ func TestPoolMetadata(t *testing.T) {
 }
 
 func TestPoolMetadata_NilChainID(t *testing.T) {
-	a := newTestAdapter(nil, &mockContract{}, nil, nil)
+	a := newTestAdapter(&mockContract{}, nil, nil)
 	addr, chainID := a.PoolMetadata()
 	require.Equal(t, common.Address{}, addr)
 	require.Nil(t, chainID)
