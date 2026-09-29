@@ -193,6 +193,70 @@ func assetIdx(assets []channel.Asset, asset channel.Asset) (channel.Index, bool)
 
 var _ channel.Asset = new(Asset)
 
+type CCAsset struct {
+	assetID     AssetID
+	AssetHolder []byte
+}
+
+// MapKey returns the asset's map key representation.
+func (a CCAsset) MapKey() AssetMapKey {
+	d, err := a.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+
+	return AssetMapKey(d)
+}
+
+// LedgerBackendID returns the asset ID of the asset.
+func (a CCAsset) LedgerBackendID() multi.LedgerBackendID {
+	return a.assetID
+}
+
+// MarshalBinary marshals the asset into its binary representation.
+func (a CCAsset) MarshalBinary() ([]byte, error) {
+	return a.AssetHolder, nil
+}
+
+// UnmarshalBinary unmarshals the asset from its binary representation.
+func (a *CCAsset) UnmarshalBinary(data []byte) error {
+	buf := bytes.NewBuffer(data)
+	return perunio.Decode(buf, &a.AssetHolder)
+}
+
+// LedgerID returns the ledger ID the asset lives on.
+func (a CCAsset) LedgerID() multi.LedgerID {
+	return a.LedgerBackendID().LedgerID()
+}
+
+// NewCCAsset creates a new asset from an chainID and the AssetHolder address.
+func NewCCAsset(chainID *big.Int, assetHolder []byte) *CCAsset {
+	id := MakeLedgerBackendID(chainID).(AssetID) //nolint: forcetypeassert // LedgerBackendID implements multi.LedgerBackendID
+	return &CCAsset{assetID: id, AssetHolder: assetHolder}
+}
+
+// Equal returns true iff the asset equals the given asset.
+func (a CCAsset) Equal(b channel.Asset) bool {
+	ccAsset, ok := b.(*CCAsset)
+	if !ok {
+		return false
+	}
+	if a.assetID.LedgerID().MapKey() != ccAsset.assetID.LedgerID().MapKey() {
+		return false
+	}
+	if len(a.AssetHolder) != len(ccAsset.AssetHolder) {
+		return false
+	}
+	return bytes.Equal(a.AssetHolder, ccAsset.AssetHolder)
+}
+
+// Address returns the address of the asset.
+func (a CCAsset) Address() []byte {
+	return a.AssetHolder
+}
+
+var _ channel.Asset = new(CCAsset)
+
 // ValidateAssetHolderETH checks if the bytecode at the given asset holder ETH
 // address is correct and if the adjudicator address is correctly set in the
 // asset holder contract. The contract code at the adjudicator address is not
