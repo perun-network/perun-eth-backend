@@ -14,6 +14,11 @@ It thereby enables Perun channels for EVM-compatible networks.
 * `channel/`: Channel interface implementations.
 * `client/`: Client tests.
 * `wallet/`: Wallet interface implementations.
+* `adapter/`: Operator side of the Ethereum liquidity pool (`LiquidityPool.sol`) for Perun-X yield.
+
+The pool's invariants and trust model are described in
+[docs/liquidity-invariants.md](docs/liquidity-invariants.md). The system-level description and the
+testnet deployment are in `docs/YIELD.md` of `perun-websocket-backend` on its branch `staging-testnet`.
 
 ## Development
 
