@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-11-17
+Fixes for channels between EVM and non-EVM chains.
+
+### Changed
+- Update go-perun and adjust to its sub-state type
+
+### Fixed
+- Count only Ethereum assets when summing the other participants' balances during funding
+- Decode non-EVM assets from contract events instead of panicking
+- Do not call Unsubscribe on a nil head subscription when subscribing to new heads fails, which caused a panic
+
 ## [0.6.0] Bromo - 2025-04-08 [:boom:]
 Support for EVM to Non-EVM payment channels and other fixes.
 
